@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { Source_Sans_3, Spectral } from "next/font/google";
+import "@fontsource/source-sans-3/400.css";
+import "@fontsource/source-sans-3/500.css";
+import "@fontsource/source-sans-3/600.css";
+import "@fontsource/source-sans-3/700.css";
+import "@fontsource/spectral/400.css";
+import "@fontsource/spectral/500.css";
+import "@fontsource/spectral/600.css";
+import "@fontsource/spectral/700.css";
 import "./globals.css";
-
-const spectral = Spectral({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const sourceSans = Source_Sans_3({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export const metadata: Metadata = {
   title: "Proposal Scavenger Hunt",
@@ -26,9 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${spectral.variable} ${sourceSans.variable} antialiased`}>
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

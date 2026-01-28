@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@fontsource/source-sans-3": "^5.2.8",
+    "@fontsource/spectral": "^5.2.8",
     "@react-google-maps/api": "^2.20.8",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.91.0",

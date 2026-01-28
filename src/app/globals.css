@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+  --font-body: "Source Sans 3";
+  --font-display: "Spectral";
   --bg-ink: #1f2320;
   --bg-deep: #2b3340;
   --bg-glow: #3d4a4f;
