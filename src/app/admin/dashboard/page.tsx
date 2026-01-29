@@ -86,6 +86,11 @@ export default function AdminDashboard() {
   const [expandedPlayers, setExpandedPlayers] = useState<Record<string, boolean>>({});
   const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{
+    message: string;
+    tone: "loading" | "success" | "error";
+  } | null>(null);
+  const [bannerVisible, setBannerVisible] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [authorizedNames, setAuthorizedNames] = useState<AuthorizedName[]>([]);
   const [userStatus, setUserStatus] = useState<string | null>(null);
@@ -94,6 +99,22 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "players" | "users" | "design" | "sms">(
     "overview"
   );
+
+  useEffect(() => {
+    const message = status ?? userStatus;
+    if (!message) return;
+    const tone: "loading" | "success" | "error" = /saving|seeding|securing|updating|sending/i.test(
+      message
+    )
+      ? "loading"
+      : /unable|error|failed/i.test(message)
+        ? "error"
+        : "success";
+    setBanner({ message, tone });
+    setBannerVisible(true);
+    const timer = window.setTimeout(() => setBannerVisible(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [status, userStatus]);
 
   const getAdminToken = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -690,10 +711,31 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        {status && (
-          <p className="relative z-0 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-            {status}
-          </p>
+        {banner && bannerVisible && (
+          <motion.div
+            className="fixed left-1/2 top-4 z-50 flex w-[min(720px,90vw)] -translate-x-1/2 items-center justify-between gap-4 rounded-2xl border border-[var(--stroke)] bg-black/80 px-4 py-3 text-sm text-[var(--text-muted)] shadow-[var(--shadow)] backdrop-blur"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+          >
+            <div className="flex items-center gap-3">
+              {banner.tone === "loading" ? (
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--accent-gold)]" />
+              ) : banner.tone === "error" ? (
+                <span className="h-2 w-2 rounded-full bg-[#f16d6d]" />
+              ) : (
+                <span className="h-2 w-2 rounded-full bg-[var(--accent-emerald)]" />
+              )}
+              <span>{banner.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBannerVisible(false)}
+              className="rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-white"
+            >
+              Close
+            </button>
+          </motion.div>
         )}
 
         <nav className="flex flex-wrap gap-2">

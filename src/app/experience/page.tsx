@@ -557,20 +557,19 @@ function ExperienceContent() {
                       const isCurrentProgress = card.clue_index === effectiveProgressStep;
                       const isCurrentView = card.clue_index === stepId;
                       const isFinal = card.is_final;
-                      const isAccessible =
-                        demoMode || card.clue_index <= effectiveProgressStep;
+                      const isAccessible = demoMode || card.clue_index <= effectiveProgressStep;
+                      const isLocked = !demoMode && card.clue_index > effectiveProgressStep;
                       return (
                         <div key={card.id} className="flex items-center gap-3">
                           <button
-                            onClick={() =>
-                              isAccessible
-                                ? router.push(`/experience?step=${card.clue_index}`)
-                                : undefined
-                            }
+                            onClick={() => {
+                              if (!isAccessible) return;
+                              router.push(`/experience?step=${card.clue_index}`);
+                            }}
                             className={`flex min-w-[72px] flex-col items-center gap-2 ${
-                              isAccessible ? "" : "opacity-60"
+                              isLocked ? "pointer-events-none opacity-50" : ""
                             }`}
-                            disabled={!isAccessible}
+                            aria-disabled={isLocked}
                           >
                             <div
                               className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm ${
