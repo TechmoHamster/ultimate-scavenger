@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import confetti from "canvas-confetti";
 import { DEMO_COORDS, DEMO_GEO_OVERRIDE } from "@/lib/config";
 import { FINAL_DESTINATION, steps } from "@/lib/steps";
@@ -20,7 +20,7 @@ const formatDistance = (distance: number | null, ready: boolean) => {
   return `${Math.round(distance)} m away`;
 };
 
-export default function Experience() {
+function ExperienceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, profile, loading } = useProfile();
@@ -634,5 +634,21 @@ export default function Experience() {
         </section>
       </motion.div>
     </div>
+  );
+}
+
+export default function Experience() {
+  return (
+    <Suspense
+      fallback={
+        <div className="page-shell min-h-screen px-6 py-10 md:px-12 md:py-16">
+          <div className="glass-panel rounded-3xl p-6 text-sm text-[var(--text-muted)]">
+            Loading experience…
+          </div>
+        </div>
+      }
+    >
+      <ExperienceContent />
+    </Suspense>
   );
 }
