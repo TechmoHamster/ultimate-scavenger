@@ -10,7 +10,7 @@ import "@fontsource/spectral/700.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Proposal Scavenger Hunt",
+  title: "Scavenger Hunt",
   description: "A cinematic, location-driven scavenger hunt experience.",
 };
 
