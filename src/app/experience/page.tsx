@@ -28,6 +28,7 @@ function ExperienceContent() {
   const { demoMode, demoUi, toggleDemo, togglePlayerView, playerView } = useDemoSettings(
     Boolean(isAdmin)
   );
+  const shouldPersistProgress = !demoMode;
   const [state, setState] = useState<PlayerState | null>(null);
   const [stepId, setStepId] = useState(0);
   const [password, setPassword] = useState("");
@@ -128,6 +129,14 @@ function ExperienceContent() {
     progress.loading,
     user,
   ]);
+
+  useEffect(() => {
+    if (demoMode) return;
+    const currentStep = effectiveProgressStep;
+    if (stepId > currentStep) {
+      router.replace(`/experience?step=${currentStep}`);
+    }
+  }, [demoMode, effectiveProgressStep, stepId, router]);
 
   const completedIds = progress.state?.completedStepIds ?? [];
   const maxCompleted = completedIds.length ? Math.max(...completedIds) : -1;
@@ -230,7 +239,7 @@ function ExperienceContent() {
     }
     setState(updated);
 
-    if (user && step) {
+    if (user && step && shouldPersistProgress) {
       recordCompletion(
         user,
         stepId,
@@ -286,7 +295,7 @@ function ExperienceContent() {
     }
     setState(updated);
 
-    if (user) {
+    if (user && shouldPersistProgress) {
       recordHintPurchase(user, stepId, hintOrder, cost).then(() => progress.refresh());
     }
   };
