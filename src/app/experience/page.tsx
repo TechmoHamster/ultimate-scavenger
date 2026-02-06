@@ -125,6 +125,11 @@ function ExperienceContent() {
     user,
   ]);
 
+  const completedIds = progress.state?.completedStepIds ?? [];
+  const maxCompleted = completedIds.length ? Math.max(...completedIds) : -1;
+  const progressStep = progress.state?.lastStepId ?? 0;
+  const effectiveProgressStep = Math.max(progressStep, maxCompleted + 1);
+  
   useEffect(() => {
     if (demoMode) return;
     const currentStep = effectiveProgressStep;
@@ -132,11 +137,6 @@ function ExperienceContent() {
       router.replace(`/experience?step=${currentStep}`);
     }
   }, [demoMode, effectiveProgressStep, stepId, router]);
-
-  const completedIds = progress.state?.completedStepIds ?? [];
-  const maxCompleted = completedIds.length ? Math.max(...completedIds) : -1;
-  const progressStep = progress.state?.lastStepId ?? 0;
-  const effectiveProgressStep = Math.max(progressStep, maxCompleted + 1);
 
   const step: Clue | undefined = useMemo(
     () => trackerClues.find((clue) => clue.clue_index === stepId),
