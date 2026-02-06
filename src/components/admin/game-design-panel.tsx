@@ -46,12 +46,15 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
   useEffect(() => {
     const nextDrafts = clues.map((clue) => ({
       ...clue,
+      reminder: clue.reminder ?? "",
       password: "",
       has_password: false,
       requires_unlock: true,
       radius_meters: null,
       lat: null,
       lng: null,
+      hints_enabled: clue.hints_enabled ?? true,
+      hint_limit: clue.hint_limit ?? clue.hints.length,
     }));
     setDrafts(nextDrafts);
     setExpanded((prev) => {
@@ -125,24 +128,25 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
       );
     };
 
-  const setHintCount = (clueIndex: number, count: 1 | 2) => {
+  const setHintCount = (clueIndex: number, count: 1 | 2 | 3) => {
     setHasUserEdits(true);
     setDrafts((prev) =>
       prev.map((clue, idx) => {
         if (idx !== clueIndex) return clue;
-        if (count === 1) {
-          return { ...clue, hints: clue.hints.slice(0, 1) };
+        const nextHints = clue.hints.slice(0, count);
+        while (nextHints.length < count) {
+          const hintId = `${clue.id}-hint-${nextHints.length + 1}`;
+          nextHints.push({
+            id: hintId,
+            sort_order: nextHints.length + 1,
+            cost: 0,
+            text: "",
+          });
         }
-        if (clue.hints.length >= 2) {
-          return clue;
-        }
-        const hintId = `${clue.id}-hint-${clue.hints.length + 1}`;
         return {
           ...clue,
-          hints: [
-            ...clue.hints,
-            { id: hintId, sort_order: 2, cost: 0, text: "" },
-          ],
+          hint_limit: count,
+          hints: nextHints,
         };
       })
     );
@@ -157,8 +161,11 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
       label: clue.label,
       title: clue.title,
       clue: clue.clue,
+      reminder: clue.reminder ?? null,
       reward: clue.reward,
       is_final: clue.is_final,
+      hints_enabled: clue.hints_enabled ?? true,
+      hint_limit: clue.hint_limit ?? clue.hints.length,
     };
 
     let clueId = clue.id.startsWith("local-") ? null : clue.id;
@@ -232,7 +239,10 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
               ...item,
               title: clue.title,
               clue: clue.clue,
+              reminder: clue.reminder ?? null,
               reward: clue.reward,
+              hints_enabled: clue.hints_enabled ?? true,
+              hint_limit: clue.hint_limit ?? clue.hints.length,
               hints: clue.hints,
               radius_meters: clue.radius_meters ?? null,
               lat: clue.lat ?? null,
@@ -374,8 +384,11 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
           label: clue.label,
           title: clue.title,
           clue: clue.clue,
+          reminder: clue.reminder ?? null,
           reward: clue.reward,
           is_final: clue.is_final,
+          hints_enabled: clue.hints_enabled ?? true,
+          hint_limit: clue.hint_limit ?? clue.hints.length,
         }))
       )
       .select("id, clue_index");
@@ -447,7 +460,10 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     const baseDirty =
       clue.title !== original.title ||
       clue.clue !== original.clue ||
+      clue.reminder !== original.reminder ||
       clue.reward !== original.reward ||
+      clue.hints_enabled !== original.hints_enabled ||
+      (clue.hint_limit ?? clue.hints.length) !== (original.hint_limit ?? original.hints.length) ||
       clue.radius_meters !== original.radius_meters ||
       clue.lat !== original.lat ||
       clue.lng !== original.lng ||
@@ -858,41 +874,57 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
                     className="min-h-[140px] w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                   />
                 </label>
+                <label className="mt-4 grid content-start gap-2 text-sm">
+                  <span className="text-[var(--text-muted)]">Reminder text (optional)</span>
+                  <textarea
+                    value={clue.reminder ?? ""}
+                    onChange={(event) => updateClue(clueIndex, "reminder", event.target.value)}
+                    className="min-h-[100px] w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                    placeholder="Short reminder or nudge for where to look."
+                  />
+                </label>
               </div>
             </div>
 
             <div className="mt-6 rounded-2xl border border-[var(--stroke)] bg-black/30 p-4">
               <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">Hints</p>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                <span>Hint count</span>
+                <span>Hints enabled</span>
+                <label className="relative inline-flex h-6 w-11 items-center">
+                  <input
+                    type="checkbox"
+                    checked={clue.hints_enabled !== false}
+                    onChange={(event) => updateClue(clueIndex, "hints_enabled", event.target.checked)}
+                    className="peer h-0 w-0 opacity-0"
+                  />
+                  <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
+                  <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
+                </label>
+                <span className="ml-2">Hint count</span>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setHintCount(clueIndex, 1)}
-                    className={`rounded-full px-3 py-2 text-[10px] uppercase tracking-[0.3em] ${
-                      clue.hints.length === 1
-                        ? "bg-[var(--accent-gold)] text-black"
-                        : "border border-[var(--stroke)] text-[var(--text-muted)]"
-                    }`}
-                  >
-                    1 hint
-                  </button>
-                  <button
-                    onClick={() => setHintCount(clueIndex, 2)}
-                    className={`rounded-full px-3 py-2 text-[10px] uppercase tracking-[0.3em] ${
-                      clue.hints.length >= 2
-                        ? "bg-[var(--accent-gold)] text-black"
-                        : "border border-[var(--stroke)] text-[var(--text-muted)]"
-                    }`}
-                  >
-                    2 hints
-                  </button>
+                  {[1, 2, 3].map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setHintCount(clueIndex, count as 1 | 2 | 3)}
+                      disabled={clue.hints_enabled === false}
+                      className={`rounded-full px-3 py-2 text-[10px] uppercase tracking-[0.3em] ${
+                        (clue.hint_limit ?? clue.hints.length) === count
+                          ? "bg-[var(--accent-gold)] text-black"
+                          : "border border-[var(--stroke)] text-[var(--text-muted)]"
+                      } ${clue.hints_enabled === false ? "opacity-50" : ""}`}
+                    >
+                      {count} hint{count > 1 ? "s" : ""}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {clue.hints.map((hint, hintIndex) => (
                   <div
                     key={hint.id}
-                    className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4"
+                    className={`rounded-2xl border border-[var(--stroke)] bg-black/30 p-4 ${
+                      clue.hints_enabled === false ? "opacity-50" : ""
+                    }`}
                   >
                     <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
                       <span>Hint {hintIndex + 1}</span>
@@ -910,6 +942,7 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
                     </div>
                     <textarea
                       value={hint.text}
+                      disabled={clue.hints_enabled === false}
                       onChange={(event) => updateHint(clueIndex, hintIndex, "text")(event.target.value)}
                       className="mt-3 min-h-[80px] w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                     />
@@ -918,6 +951,7 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
                       <input
                         type="number"
                         value={hint.cost}
+                        disabled={clue.hints_enabled === false}
                         onChange={(event) => updateHint(clueIndex, hintIndex, "cost")(event.target.value)}
                         className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                       />

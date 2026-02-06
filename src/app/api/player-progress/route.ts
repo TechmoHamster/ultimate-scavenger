@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   const maxCompleted = completedIndexes.length ? Math.max(...completedIndexes) : -1;
   const desiredCurrent = Math.max(maxCompleted + 1, 0);
 
-  if (playerState && desiredCurrent > playerState.current_clue_index) {
+  if (playerState && playerState.current_clue_index !== desiredCurrent) {
     await supabase
       .from("player_state")
       .update({ current_clue_index: desiredCurrent })

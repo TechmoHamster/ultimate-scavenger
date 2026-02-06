@@ -17,10 +17,13 @@ export type Clue = {
   label: string;
   title: string;
   clue: string;
+  reminder?: string | null;
   reward: number;
   is_final: boolean;
   hints: ClueHint[];
   requires_unlock?: boolean;
+  hints_enabled?: boolean;
+  hint_limit?: number | null;
 };
 
 export const toDefaultClues = (): Clue[] =>
@@ -30,6 +33,7 @@ export const toDefaultClues = (): Clue[] =>
     label: step.label,
     title: step.title,
     clue: step.clue,
+    reminder: null,
     reward: step.reward,
     is_final: Boolean(step.isFinal),
     hints: step.hints.map((hint, index) => ({
@@ -38,6 +42,8 @@ export const toDefaultClues = (): Clue[] =>
       cost: hint.cost,
       text: hint.text,
     })),
+    hints_enabled: true,
+    hint_limit: step.hints.length,
   }));
 
 export const useClues = () => {
@@ -49,7 +55,7 @@ export const useClues = () => {
     const { data, error } = await supabase
       .from("clues")
       .select(
-        "id, clue_index, label, title, clue, reward, is_final, hints:clue_hints(id, sort_order, cost, text)"
+        "id, clue_index, label, title, clue, reminder, reward, is_final, hints_enabled, hint_limit, hints:clue_hints(id, sort_order, cost, text)"
       )
       .order("clue_index", { ascending: true })
       .order("sort_order", { foreignTable: "clue_hints", ascending: true });

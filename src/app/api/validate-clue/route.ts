@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { decryptSecret } from "@/lib/crypto.server";
 import { hashPassword, normalizePassword, verifyPassword } from "@/lib/password.server";
 
 const supabase = createClient(
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
 
   const { data: secret } = await supabase
     .from("clue_secrets")
-    .select("password, password_hash, radius_meters, lat, lng, requires_unlock")
+    .select("password, password_hash, password_ciphertext, radius_meters, lat, lng, requires_unlock")
     .eq("clue_id", clueRow.id)
     .maybeSingle();
 
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, distance: null });
   }
 
-  if (!secret?.password_hash && !secret?.password) {
+  if (!secret?.password_hash && !secret?.password && !secret?.password_ciphertext) {
     return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
   }
 
@@ -83,13 +84,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, reason: "Missing password" }, { status: 200 });
   }
 
-  if (secret?.password_hash) {
+  if (secret?.password_ciphertext) {
+    try {
+      const stored = normalizePassword(decryptSecret(secret.password_ciphertext));
+      const input = normalizePassword(inputPassword);
+      if (!input || (input.length < 3 ? stored !== input : !stored.includes(input))) {
+        return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
+      }
+    } catch {
+      return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
+    }
+  } else if (secret?.password_hash) {
     if (!verifyPassword(inputPassword, secret.password_hash)) {
       return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
     }
   } else if (secret?.password) {
     const normalized = normalizePassword(inputPassword);
-    if (!normalized || normalizePassword(secret.password) !== normalized) {
+    if (!normalized || (normalized.length < 3 ? normalizePassword(secret.password) !== normalized : !normalizePassword(secret.password).includes(normalized))) {
       return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
     }
     const upgraded = hashPassword(inputPassword);

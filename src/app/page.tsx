@@ -9,6 +9,7 @@ import MenuButton from "@/components/menu-button";
 import { useProfile } from "@/lib/profile";
 import { useDemoSettings } from "@/lib/demo";
 import { usePlayerProgress } from "@/lib/player-progress";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function Home() {
   const router = useRouter();
@@ -24,7 +25,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.replace("/auth/name");
+      if (typeof document !== "undefined" && document.cookie.includes("psh_session=1")) {
+        return;
+      }
+      const checkSession = async () => {
+        const supabase = createSupabaseBrowserClient();
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) {
+          router.replace("/auth/name");
+        }
+      };
+      checkSession();
       return;
     }
     const existing = ensureState(steps);

@@ -90,16 +90,11 @@ function ExperienceContent() {
     const effectiveProgressStep = Math.max(progressStep, maxCompleted + 1);
     const requestedStep =
       hasStepParam && Number.isFinite(rawStep) && rawStep >= 0 ? rawStep : effectiveProgressStep;
+    const normalizedStep = demoMode ? requestedStep : effectiveProgressStep;
 
-    const limitedStep =
-      !demoMode && requestedStep > effectiveProgressStep ? effectiveProgressStep : requestedStep;
-
-    if (hasStepParam && requestedStep > effectiveProgressStep && !demoMode) {
+    if (!demoMode && hasStepParam && requestedStep !== effectiveProgressStep) {
       setStatusNote("That clue is locked. Returning you to your current clue.");
-      const timer = window.setTimeout(() => {
-        router.replace(`/experience?step=${effectiveProgressStep}`);
-      }, 900);
-      return () => window.clearTimeout(timer);
+      router.replace(`/experience?step=${effectiveProgressStep}`);
     } else {
       setStatusNote(null);
     }
@@ -107,12 +102,12 @@ function ExperienceContent() {
     const unlockParam = searchParams.get("unlock");
     const sourceParam = searchParams.get("source");
     const shouldUnlock =
-      hasStepParam &&
+      normalizedStep === requestedStep &&
       (unlockParam === "1" ||
         unlockParam === "true" ||
         unlockParam === "yes" ||
         sourceParam === "qr");
-    setStepId(Math.min(Math.max(limitedStep, 0), maxIndex));
+    setStepId(Math.min(Math.max(normalizedStep, 0), maxIndex));
     setPassword("");
     setShowUnlock(shouldUnlock);
     setGeoStatus("idle");
@@ -151,6 +146,12 @@ function ExperienceContent() {
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
   const requiresUnlock = step ? step.clue_index !== 0 : false;
+  const hintLimit = step?.hint_limit ?? step?.hints?.length ?? 0;
+  const hintsEnabled = (step?.hints_enabled ?? true) && hintLimit > 0;
+  const visibleHints = hintsEnabled ? (step?.hints ?? []).slice(0, hintLimit) : [];
+  const previousCompletedId = completedIds.length
+    ? Math.max(...completedIds.filter((id) => id < stepId), -1)
+    : -1;
 
   const handleLocationCheck = () => {
     setGeoStatus("pending");
@@ -397,10 +398,30 @@ function ExperienceContent() {
             <p className="mt-4 text-lg italic text-[var(--text-muted)] text-center md:text-xl">
               {step?.clue ?? "Loading clue..."}
             </p>
+            {step?.reminder && (
+              <p className="mt-4 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
+                {step.reminder}
+              </p>
+            )}
             {stepId === 0 && (
               <p className="mt-4 text-center text-sm text-[var(--text-muted)]">
                 Read the intro letter, then confirm to begin the hunt.
               </p>
+            )}
+            {isCompleted && (
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                <span className="rounded-full border border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]">
+                  Clue solved
+                </span>
+                {!step?.is_final && (
+                  <button
+                    onClick={() => router.push(`/experience?step=${nextStepId}`)}
+                    className="rounded-full bg-[var(--accent-gold)] px-6 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                  >
+                    Continue
+                  </button>
+                )}
+              </div>
             )}
 
             {requiresUnlock && !isCompleted && (
@@ -491,6 +512,14 @@ function ExperienceContent() {
             )}
 
             <div className="mt-6 flex flex-wrap gap-3">
+              {previousCompletedId >= 0 && (
+                <button
+                  onClick={() => router.push(`/experience?step=${previousCompletedId}`)}
+                  className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                >
+                  Previous clue
+                </button>
+              )}
               {!requiresUnlock && !isCompleted && (
                 <button
                   onClick={handleCompleteStep}
@@ -516,10 +545,12 @@ function ExperienceContent() {
             <div className="glass-panel-strong rounded-3xl p-6 md:p-8">
               <h3 className="text-display text-xl">Hints</h3>
               <p className="mt-2 text-sm text-[var(--text-muted)]">
-                Spend credits to reveal extra guidance. Purchased hints stay visible.
+                {hintsEnabled
+                  ? "Spend credits to reveal extra guidance. Purchased hints stay visible."
+                  : "Hints are disabled for this clue."}
               </p>
               <div className="mt-5 grid gap-4">
-                {(step?.hints ?? []).map((hint, index) => {
+                {visibleHints.map((hint, index) => {
                   const hintOrder = index + 1;
                   const isUnlocked = purchasedHints.includes(String(hintOrder)) || hint.cost === 0;
                   return (
@@ -568,6 +599,7 @@ function ExperienceContent() {
                       const isFinal = card.is_final;
                       const isAccessible = demoMode || card.clue_index <= effectiveProgressStep;
                       const isLocked = !demoMode && card.clue_index > effectiveProgressStep;
+                      const showUnlock = isCurrentProgress && !completed;
                       return (
                         <div key={card.id} className="flex items-center gap-3">
                           <button
@@ -584,12 +616,12 @@ function ExperienceContent() {
                               className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm ${
                                 completed
                                   ? "border-[var(--accent-emerald)] bg-[var(--accent-emerald)]/15 text-[var(--accent-emerald)]"
-                                  : isCurrentProgress
+                                  : showUnlock
                                   ? "border-[var(--accent-gold)] bg-[var(--accent-gold)]/10 text-[var(--accent-gold)]"
                                   : "border-[var(--stroke)] text-[var(--text-muted)]"
                               }`}
                             >
-                              {completed ? "✓" : isCurrentProgress ? "🔓" : "🔒"}
+                              {completed ? "✓" : showUnlock ? "🔓" : "🔒"}
                             </div>
                             <span className="flex min-h-[32px] flex-col items-center justify-start text-[10px] uppercase tracking-[0.3em]">
                               <span

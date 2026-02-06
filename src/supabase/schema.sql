@@ -100,7 +100,10 @@ create table if not exists public.clues (
   label text not null,
   title text not null,
   clue text not null,
+  reminder text,
   reward int default 0,
+  hints_enabled boolean default true,
+  hint_limit int default 2,
   is_final boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now()

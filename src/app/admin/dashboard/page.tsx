@@ -1002,12 +1002,12 @@ export default function AdminDashboard() {
 
         {activeTab === "players" && (
           <motion.section
-            className="grid gap-6"
+            className="relative z-10 grid gap-6 overflow-visible"
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
-          <div className="glass-panel relative z-40 rounded-3xl p-6 md:p-8">
+          <div className="glass-panel relative z-50 overflow-visible rounded-3xl p-6 md:p-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-display text-2xl">Player Operations</h2>
@@ -1038,7 +1038,7 @@ export default function AdminDashboard() {
                     {option.label}
                   </button>
                 ))}
-                <div className="relative z-50 isolate">
+                <div className="relative z-[200] isolate">
                   <button
                     onClick={() => {
                       setPlayerViewMode("custom");
@@ -1053,7 +1053,7 @@ export default function AdminDashboard() {
                     Filters
                   </button>
                   {playerFilterOpen && (
-                    <div className="absolute right-0 top-12 z-[999] w-64 rounded-2xl border border-[var(--stroke)] bg-[var(--panel-strong)] p-4 shadow-xl">
+                    <div className="absolute right-0 top-12 z-[300] w-64 rounded-2xl border border-[var(--stroke)] bg-[var(--panel-strong)] p-4 shadow-xl">
                       <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
                         Roles
                       </p>
@@ -1065,7 +1065,11 @@ export default function AdminDashboard() {
                         ] as const).map((role) => (
                           <label
                             key={role.key}
-                            className="flex cursor-pointer items-center gap-3 rounded-full border border-[var(--stroke)] bg-black/30 px-3 py-2 transition hover:border-[var(--accent-gold)]/70 hover:bg-black/50"
+                            className={`flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition hover:border-[var(--accent-gold)]/70 hover:bg-black/50 ${
+                              playerRoleFilter[role.key]
+                                ? "border-[var(--accent-gold)]/70 bg-black/50 text-white"
+                                : "border-[var(--stroke)] bg-black/30 text-[var(--text-muted)]"
+                            }`}
                           >
                             <input
                               type="checkbox"
@@ -1078,10 +1082,16 @@ export default function AdminDashboard() {
                               }
                               className="sr-only"
                             />
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[var(--stroke)] bg-black/40">
+                            <span
+                              className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                                playerRoleFilter[role.key]
+                                  ? "border-[var(--accent-gold)] bg-[var(--accent-gold)]/10"
+                                  : "border-[var(--stroke)] bg-black/40"
+                              }`}
+                            >
                               <span
-                                className={`h-3 w-3 rounded-full bg-[var(--accent-gold)] transition ${
-                                  playerRoleFilter[role.key] ? "opacity-100" : "opacity-0"
+                                className={`h-2.5 w-2.5 rounded-full bg-[var(--accent-gold)] transition ${
+                                  playerRoleFilter[role.key] ? "scale-100 opacity-100" : "scale-50 opacity-0"
                                 }`}
                               />
                             </span>
@@ -1093,17 +1103,29 @@ export default function AdminDashboard() {
                         <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
                           Status
                         </p>
-                        <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-full border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-[var(--text-muted)] transition hover:border-[var(--accent-gold)]/70 hover:bg-black/50">
+                        <label
+                          className={`mt-3 flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 text-sm transition hover:border-[var(--accent-gold)]/70 hover:bg-black/50 ${
+                            includeDisabledPlayers
+                              ? "border-[var(--accent-gold)]/70 bg-black/50 text-white"
+                              : "border-[var(--stroke)] bg-black/30 text-[var(--text-muted)]"
+                          }`}
+                        >
                           <input
                             type="checkbox"
                             checked={includeDisabledPlayers}
                             onChange={(event) => setIncludeDisabledPlayers(event.target.checked)}
                             className="sr-only"
                           />
-                          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[var(--stroke)] bg-black/40">
+                          <span
+                            className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                              includeDisabledPlayers
+                                ? "border-[var(--accent-gold)] bg-[var(--accent-gold)]/10"
+                                : "border-[var(--stroke)] bg-black/40"
+                            }`}
+                          >
                             <span
-                              className={`h-3 w-3 rounded-full bg-[var(--accent-gold)] transition ${
-                                includeDisabledPlayers ? "opacity-100" : "opacity-0"
+                              className={`h-2.5 w-2.5 rounded-full bg-[var(--accent-gold)] transition ${
+                                includeDisabledPlayers ? "scale-100 opacity-100" : "scale-50 opacity-0"
                               }`}
                             />
                           </span>
@@ -1141,6 +1163,22 @@ export default function AdminDashboard() {
           )}
           {filteredPlayerRows.map((player) => {
             const isExpanded = expandedPlayers[player.id] ?? false;
+            const clueTitle = (index: number) =>
+              steps.find((step) => step.id === index)?.title ?? `Clue ${index}`;
+            const eventItems = [
+              ...player.completionDetails.map((entry) => ({
+                id: `completion-${player.id}-${entry.clue_index}-${entry.completed_at}`,
+                at: entry.completed_at,
+                label: `Unlocked ${clueTitle(entry.clue_index)}`,
+              })),
+              ...player.hints.map((entry) => ({
+                id: `hint-${player.id}-${entry.clue_index}-${entry.hint_order}-${entry.purchased_at}`,
+                at: entry.purchased_at,
+                label: `Purchased hint ${entry.hint_order} for ${clueTitle(entry.clue_index)}`,
+              })),
+            ]
+              .filter((item) => item.at)
+              .sort((a, b) => new Date(b.at!).getTime() - new Date(a.at!).getTime());
             return (
               <div
                 key={player.id}
@@ -1323,6 +1361,39 @@ export default function AdminDashboard() {
                             </div>
                           );
                         })}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4">
+                        <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                          Current clue
+                        </p>
+                        <p className="mt-2 text-lg text-white">
+                          {clueTitle(player.currentClue)}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                          Last activity {formatSince(player.lastActivity)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4">
+                        <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                          Event log
+                        </p>
+                        <div className="mt-3 max-h-48 space-y-3 overflow-auto pr-2 text-sm text-[var(--text-muted)]">
+                          {eventItems.length === 0 ? (
+                            <p>No events recorded yet.</p>
+                          ) : (
+                            eventItems.slice(0, 12).map((event) => (
+                              <div key={event.id} className="flex items-start justify-between gap-3">
+                                <span className="text-white">{event.label}</span>
+                                <span className="text-xs text-[var(--text-muted)]">
+                                  {formatSince(event.at)}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                     </div>
 
