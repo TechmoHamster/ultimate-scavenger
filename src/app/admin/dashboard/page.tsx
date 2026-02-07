@@ -291,7 +291,7 @@ export default function AdminDashboard() {
       .from("player_state")
       .upsert({ player_id: playerId, wallet_balance: next, current_clue_index: 0 });
 
-    setStatus("Credits updated.");
+    pushStatus("Credits updated.");
     loadPlayers();
   };
 
@@ -307,7 +307,7 @@ export default function AdminDashboard() {
         wallet_balance: STARTING_WALLET,
       });
 
-    setStatus("Progress reset.");
+    pushStatus("Progress reset.");
     loadPlayers();
   };
 
@@ -316,28 +316,28 @@ export default function AdminDashboard() {
     await supabase
       .from("player_state")
       .upsert({ player_id: playerId, current_clue_index: clueIndex });
-    setStatus("Current clue updated.");
+    pushStatus("Current clue updated.");
     loadPlayers();
   };
 
   const updateUsername = async (playerId: string, username: string) => {
     const supabase = createSupabaseBrowserClient();
     await supabase.from("profiles").update({ username }).eq("id", playerId);
-    setStatus("Username updated.");
+    pushStatus("Username updated.");
     loadPlayers();
   };
 
   const toggleDisabled = async (playerId: string, disabled: boolean) => {
     const supabase = createSupabaseBrowserClient();
     await supabase.from("profiles").update({ is_disabled: disabled }).eq("id", playerId);
-    setStatus(disabled ? "Player disabled." : "Player enabled.");
+    pushStatus(disabled ? "Player disabled." : "Player enabled.");
     loadPlayers();
   };
 
   const markCompletion = async (playerId: string, clueIndex: number) => {
     const supabase = createSupabaseBrowserClient();
     await supabase.from("step_completions").insert({ player_id: playerId, clue_index: clueIndex });
-    setStatus("Completion added.");
+    pushStatus("Completion added.");
     loadPlayers();
   };
 
@@ -348,7 +348,7 @@ export default function AdminDashboard() {
       .delete()
       .eq("player_id", playerId)
       .eq("clue_index", clueIndex);
-    setStatus("Completion removed.");
+    pushStatus("Completion removed.");
     loadPlayers();
   };
 
@@ -360,7 +360,7 @@ export default function AdminDashboard() {
       hint_order: hintOrder,
       cost,
     });
-    setStatus("Hint unlocked.");
+    pushStatus("Hint unlocked.");
     loadPlayers();
   };
 
@@ -390,7 +390,7 @@ export default function AdminDashboard() {
   const savePlayerDraft = async (player: PlayerRow) => {
     const draft = playerDrafts[player.id];
     if (!draft) {
-      setStatus("No changes to save.");
+      pushStatus("No changes to save.");
       return;
     }
 
@@ -415,7 +415,7 @@ export default function AdminDashboard() {
     }
 
     if (tasks.length === 0) {
-      setStatus("No changes to save.");
+      pushStatus("No changes to save.");
       return;
     }
 
@@ -424,7 +424,7 @@ export default function AdminDashboard() {
       const { [player.id]: _removed, ...rest } = prev;
       return rest;
     });
-    setStatus("Player changes saved.");
+    pushStatus("Player changes saved.");
   };
 
   const updateUserRole = async (userId: string, role: string) => {
