@@ -1108,9 +1108,9 @@ export default function GameDesignPanel({
               <button
                 onClick={() =>
                   saveClue(drafts[clueIndex])
-                    .then(() => setStatus("Saved clue changes."))
+                    .then(() => notifyStatus("Saved clue changes."))
                     .catch((error) =>
-                      setStatus(error instanceof Error ? error.message : "Unable to save clue.")
+                      notifyStatus(error instanceof Error ? error.message : "Unable to save clue.")
                     )
                 }
                 className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
