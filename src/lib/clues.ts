@@ -44,6 +44,7 @@ export const toDefaultClues = (): Clue[] =>
     })),
     hints_enabled: true,
     hint_limit: step.hints.length,
+    requires_unlock: true,
   }));
 
 export const useClues = () => {
@@ -51,27 +52,19 @@ export const useClues = () => {
   const [loading, setLoading] = useState(true);
 
   const fetchClues = async () => {
-    const supabase = createSupabaseBrowserClient();
-    const { data, error } = await supabase
-      .from("clues")
-      .select(
-        "id, clue_index, label, title, clue, reminder, reward, is_final, hints_enabled, hint_limit, hints:clue_hints(id, sort_order, cost, text)"
-      )
-      .order("clue_index", { ascending: true })
-      .order("sort_order", { foreignTable: "clue_hints", ascending: true });
-
-    if (error || !data || data.length === 0) {
+    try {
+      const response = await fetch("/api/clues", { cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      const data = body?.clues as Clue[] | undefined;
+      if (!response.ok || !data || data.length === 0) {
+        setClues(toDefaultClues());
+        setLoading(false);
+        return;
+      }
+      setClues(data);
+    } catch {
       setClues(toDefaultClues());
-      setLoading(false);
-      return;
     }
-
-    const normalized = data.map((row) => ({
-      ...row,
-      hints: (row.hints ?? []).sort((a, b) => a.sort_order - b.sort_order),
-    })) as Clue[];
-
-    setClues(normalized);
     setLoading(false);
   };
 

@@ -194,7 +194,9 @@ function ExperienceContent() {
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
   const requiresUnlock = step
-    ? step.clue_index !== 0 && (requirePassword || requireGps)
+    ? step.clue_index !== 0 &&
+      step.requires_unlock !== false &&
+      (requirePassword || requireGps)
     : false;
   const hintLimit = step?.hint_limit ?? step?.hints?.length ?? 0;
   const hintsEnabled =

@@ -1,0 +1,48 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+);
+
+export async function GET() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return NextResponse.json({ ok: false, reason: "Server misconfigured" }, { status: 500 });
+  }
+
+  const { data, error } = await supabase
+    .from("clues")
+    .select(
+      [
+        "id",
+        "clue_index",
+        "label",
+        "title",
+        "clue",
+        "reminder",
+        "reward",
+        "is_final",
+        "hints_enabled",
+        "hint_limit",
+        "hints:clue_hints(id, sort_order, cost, text)",
+        "secrets:clue_secrets(requires_unlock)",
+      ].join(",")
+    )
+    .order("clue_index", { ascending: true })
+    .order("sort_order", { foreignTable: "clue_hints", ascending: true });
+
+  if (error || !data) {
+    return NextResponse.json({ ok: false, reason: error?.message ?? "No clues found" }, { status: 500 });
+  }
+
+  const normalized = data.map((row) => ({
+    ...row,
+    hints: (row.hints ?? []).sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order),
+    requires_unlock: Array.isArray(row.secrets)
+      ? row.secrets[0]?.requires_unlock ?? true
+      : row.secrets?.requires_unlock ?? true,
+  }));
+
+  return NextResponse.json({ ok: true, clues: normalized });
+}
