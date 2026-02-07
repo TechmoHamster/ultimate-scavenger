@@ -36,13 +36,28 @@ export async function GET() {
     return NextResponse.json({ ok: false, reason: error?.message ?? "No clues found" }, { status: 500 });
   }
 
-  const normalized = data.map((row) => ({
-    ...row,
-    hints: (row.hints ?? []).sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order),
-    requires_unlock: Array.isArray(row.secrets)
+  const normalized = data.map((row) => {
+    const hints = (row.hints ?? []).sort(
+      (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
+    );
+    const requiresUnlock = Array.isArray(row.secrets)
       ? row.secrets[0]?.requires_unlock ?? true
-      : row.secrets?.requires_unlock ?? true,
-  }));
+      : row.secrets?.requires_unlock ?? true;
+    return {
+      id: row.id,
+      clue_index: row.clue_index,
+      label: row.label,
+      title: row.title,
+      clue: row.clue,
+      reminder: row.reminder,
+      reward: row.reward,
+      is_final: row.is_final,
+      hints_enabled: row.hints_enabled,
+      hint_limit: row.hint_limit,
+      hints,
+      requires_unlock: requiresUnlock,
+    };
+  });
 
   return NextResponse.json({ ok: true, clues: normalized });
 }
