@@ -32,9 +32,16 @@ export default function Home() {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       const hasSession = Boolean(data.session);
+      const hasCookieSession =
+        typeof document !== "undefined" && document.cookie.includes("psh_session=1");
+      const hasLocalStorageSession =
+        typeof window !== "undefined" &&
+        Object.keys(window.localStorage).some(
+          (key) => key.startsWith("sb-") && key.endsWith("-auth-token")
+        );
       setSessionExists(hasSession);
       setAuthChecked(true);
-      if (!hasSession && !user && !loading) {
+      if (!hasSession && !hasCookieSession && !hasLocalStorageSession && !user && !loading) {
         router.replace("/auth/name");
       }
     };
