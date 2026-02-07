@@ -39,11 +39,12 @@ export async function GET() {
       ].join(",")
     )
     .eq("id", 1)
-    .maybeSingle();
+    .maybeSingle<Partial<typeof defaultSettings>>();
 
   if (error || !data) {
     return NextResponse.json({ ok: true, settings: defaultSettings });
   }
 
-  return NextResponse.json({ ok: true, settings: { ...defaultSettings, ...data } });
+  const merged = { ...defaultSettings, ...(data ?? {}) };
+  return NextResponse.json({ ok: true, settings: merged });
 }
