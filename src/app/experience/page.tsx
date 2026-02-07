@@ -44,6 +44,11 @@ function ExperienceContent() {
   const { clues } = useClues();
   const progress = usePlayerProgress(user);
   const { settings: gameSettings, loading: settingsLoading } = useGameSettings();
+  const requirePassword = gameSettings.requirePassword;
+  const requireGps = gameSettings.requireGps;
+  const allowReplay = gameSettings.allowReplay;
+  const globalHintsEnabled = gameSettings.enableHints;
+  const showDemoHelper = gameSettings.showDemoHelper;
 
   const isGateLoading =
     (loading && !user) ||
@@ -192,11 +197,6 @@ function ExperienceContent() {
   const isCompleted = completedIds.includes(stepId);
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
-  const requirePassword = gameSettings.requirePassword;
-  const requireGps = gameSettings.requireGps;
-  const allowReplay = gameSettings.allowReplay;
-  const globalHintsEnabled = gameSettings.enableHints;
-  const showDemoHelper = gameSettings.showDemoHelper;
   const requiresUnlock = step
     ? step.clue_index !== 0 && (requirePassword || requireGps)
     : false;
