@@ -25,6 +25,18 @@ type GameDesignPanelProps = {
   onStatusChange?: (message: string) => void;
 };
 
+type GameSettingsRow = {
+  require_gps: boolean | null;
+  require_password: boolean | null;
+  enable_hints: boolean | null;
+  allow_replay: boolean | null;
+  show_demo_helper: boolean | null;
+  starting_wallet: number | null;
+  max_hint_cost: number | null;
+  default_radius: number | null;
+  autosave_delay: number | null;
+};
+
 export default function GameDesignPanel({
   showBackLink = false,
   onStatusChange,
@@ -125,7 +137,7 @@ export default function GameDesignPanel({
           ].join(",")
         )
         .eq("id", 1)
-        .maybeSingle();
+        .maybeSingle<GameSettingsRow>();
 
       if (error) {
         notifyStatus(error.message ?? "Unable to load control settings.");
