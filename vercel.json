@@ -4,7 +4,7 @@
       "src": "/",
       "dest": "/consent.html",
       "headers": {
-        "host": "consent.yourdomain.xyz"
+        "host": "consent.ultimatescavenger.xyz"
       }
     }
   ]
