@@ -51,7 +51,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, reason: error?.message ?? "No clues found" }, { status: 500 });
   }
 
-  const rows = (data ?? []) as ClueRow[];
+  const rows = Array.isArray(data) ? (data as unknown as ClueRow[]) : [];
   const normalized = rows.map((row) => {
     const hints = (row.hints ?? []).sort(
       (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
