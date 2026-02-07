@@ -1858,7 +1858,7 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
-            <GameDesignPanel onStatusChange={setStatus} />
+            <GameDesignPanel onStatusChange={pushStatus} />
           </section>
         )}
 
