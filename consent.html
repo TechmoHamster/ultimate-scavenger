@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SMS Consent & Messaging Disclosure</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 32px 18px 64px; }
+    h1 { font-size: 1.9rem; margin: 0 0 10px; }
+    h2 { font-size: 1.15rem; margin: 24px 0 8px; }
+    p, li { font-size: 1rem; }
+    .card { border: 1px solid rgba(127,127,127,.35); border-radius: 14px; padding: 18px; margin: 16px 0; background: rgba(127,127,127,.06); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: .95em; }
+    .muted { opacity: .8; }
+    a { color: inherit; }
+    ul { padding-left: 20px; }
+    .footer { margin-top: 28px; font-size: .95rem; }
+    .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(127,127,127,.35); font-size: .85rem; margin-right: 6px; }
+  </style>
+</head>
+
+<body>
+  <main class="wrap">
+    <span class="pill">Proof of Consent</span>
+    <span class="pill">A2P 10DLC</span>
+
+    <h1>SMS Consent & Messaging Disclosure</h1>
+    <p class="muted">
+      This page explains how SMS messages are used for this website experience and serves as proof of consent (opt-in).
+    </p>
+
+    <div class="card">
+      <h2>How you opt in</h2>
+      <p>
+        By providing your mobile phone number on this website and submitting the form (and/or checking the consent box),
+        you agree to receive SMS messages related to this experience.
+      </p>
+    </div>
+
+    <h2>Message purpose</h2>
+    <ul>
+      <li>Account and access-related notifications (e.g., verification / authorization)</li>
+      <li>Security alerts (e.g., unusual activity, access issues)</li>
+      <li>Scavenger hunt status notifications (e.g., clue unlocked, completion confirmation)</li>
+      <li>Optional reminders relevant to the experience</li>
+    </ul>
+
+    <h2>Message frequency</h2>
+    <p>
+      Message frequency varies based on activity during the experience. Messages are limited and not sent as marketing.
+    </p>
+
+    <h2>Cost</h2>
+    <p>
+      Message and data rates may apply depending on your mobile carrier and plan.
+    </p>
+
+    <h2>Opt-out</h2>
+    <p>
+      You can opt out at any time by replying <strong>STOP</strong>. After opting out, you will no longer receive SMS messages.
+      For help, reply <strong>HELP</strong>.
+    </p>
+
+    <h2>Privacy</h2>
+    <p>
+      Your phone number is used only for this website experience and is not sold or shared for advertising.
+    </p>
+
+    <div class="footer muted">
+      <p>
+        <strong>Business/Project Name:</strong> <span id="projName">Ultimate Scavenger Hunt</span><br />
+        <strong>Contact:</strong> <a href="mailto:zach2741@gmail.com">zach2741@gmail.com</a>
+      </p>
+      <p>
+        Last updated: <span id="lastUpdated">2026-02-07</span>
+      </p>
+    </div>
+
+    <script>
+      // Optional: quickly customize without hunting text
+      // Edit these two lines only:
+      document.getElementById("projName").textContent = "Ultimate Scavenger Hunt";
+      document.querySelector('a[href^="mailto:"]').textContent = "zach2741@gmail.com";
+      document.querySelector('a[href^="mailto:"]').setAttribute("href", "mailto:zach2741@gmail.com");
+    </script>
+  </main>
+</body>
+</html>
