@@ -45,6 +45,11 @@ type AuthorizedName = {
   created_at: string | null;
 };
 
+type StatusMessage = {
+  message: string;
+  id: number;
+};
+
 const STARTING_WALLET = 20;
 const ACTIVE_WINDOW_MINUTES = 30;
 const STUCK_WINDOW_HOURS = 24;
@@ -73,6 +78,9 @@ export default function AdminDashboard() {
   );
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
+  const [playerDrafts, setPlayerDrafts] = useState<
+    Record<string, { username?: string; currentClue?: number; addCredits?: string }>
+  >({});
   const [playerViewMode, setPlayerViewMode] = useState<"players" | "staff" | "all" | "custom">(
     "players"
   );
@@ -85,22 +93,33 @@ export default function AdminDashboard() {
   const [playerFilterOpen, setPlayerFilterOpen] = useState(false);
   const [expandedPlayers, setExpandedPlayers] = useState<Record<string, boolean>>({});
   const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<StatusMessage | null>(null);
   const [banner, setBanner] = useState<{
     message: string;
     tone: "loading" | "success" | "error";
   } | null>(null);
   const [bannerVisible, setBannerVisible] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [userDrafts, setUserDrafts] = useState<
+    Record<string, { full_name?: string; username?: string; email?: string; role?: string }>
+  >({});
   const [authorizedNames, setAuthorizedNames] = useState<AuthorizedName[]>([]);
-  const [userStatus, setUserStatus] = useState<string | null>(null);
+  const [userStatus, setUserStatus] = useState<StatusMessage | null>(null);
   const [newAuthorizedName, setNewAuthorizedName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"overview" | "players" | "users" | "design" | "sms">(
     "overview"
   );
 
+  const pushStatus = (message: string) => {
+    setStatus({ message, id: Date.now() });
+  };
+
+  const pushUserStatus = (message: string) => {
+    setUserStatus({ message, id: Date.now() });
+  };
+
   useEffect(() => {
-    const message = status ?? userStatus;
+    const message = status?.message ?? userStatus?.message;
     if (!message) return;
     const tone: "loading" | "success" | "error" = /saving|seeding|securing|updating|sending/i.test(
       message
@@ -368,6 +387,46 @@ export default function AdminDashboard() {
     loadUsers();
   };
 
+  const savePlayerDraft = async (player: PlayerRow) => {
+    const draft = playerDrafts[player.id];
+    if (!draft) {
+      setStatus("No changes to save.");
+      return;
+    }
+
+    const tasks: Promise<void>[] = [];
+    const nextUsername = draft.username ?? player.username ?? "";
+    if (nextUsername !== (player.username ?? "")) {
+      tasks.push(updateUsername(player.id, nextUsername));
+    }
+
+    if (
+      typeof draft.currentClue === "number" &&
+      draft.currentClue !== player.currentClue
+    ) {
+      tasks.push(setCurrentClue(player.id, draft.currentClue));
+    }
+
+    if (draft.addCredits) {
+      const amount = Number(draft.addCredits);
+      if (!Number.isNaN(amount) && amount !== 0) {
+        tasks.push(giveCredits(player.id, amount));
+      }
+    }
+
+    if (tasks.length === 0) {
+      setStatus("No changes to save.");
+      return;
+    }
+
+    await Promise.all(tasks);
+    setPlayerDrafts((prev) => {
+      const { [player.id]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setStatus("Player changes saved.");
+  };
+
   const updateUserRole = async (userId: string, role: string) => {
     const token = await getAdminToken();
     if (!token) return;
@@ -386,6 +445,40 @@ export default function AdminDashboard() {
     }
     setUserStatus("Role updated.");
     loadUsers();
+  };
+
+  const saveUserDraft = async (user: AdminUser) => {
+    const draft = userDrafts[user.id];
+    if (!draft) {
+      setUserStatus("No changes to save.");
+      return;
+    }
+
+    const tasks: Promise<void>[] = [];
+    if (draft.full_name !== undefined && draft.full_name !== (user.full_name ?? "")) {
+      tasks.push(updateUserProfile(user.id, { full_name: draft.full_name }));
+    }
+    if (draft.username !== undefined && draft.username !== (user.username ?? "")) {
+      tasks.push(updateUserProfile(user.id, { username: draft.username }));
+    }
+    if (draft.email !== undefined && draft.email !== (user.email ?? "")) {
+      tasks.push(updateUserEmail(user.id, draft.email));
+    }
+    if (draft.role !== undefined && draft.role !== (user.role ?? "player")) {
+      tasks.push(updateUserRole(user.id, draft.role));
+    }
+
+    if (tasks.length === 0) {
+      setUserStatus("No changes to save.");
+      return;
+    }
+
+    await Promise.all(tasks);
+    setUserDrafts((prev) => {
+      const { [user.id]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setUserStatus("User changes saved.");
   };
 
   const updateUserEmail = async (userId: string, email: string) => {
@@ -1031,15 +1124,6 @@ export default function AdminDashboard() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => {
-                    setStatus("Saved player changes.");
-                    loadPlayers();
-                  }}
-                  className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-white"
-                >
-                  Save
-                </button>
                 {[
                   { key: "players", label: "Players only" },
                   { key: "staff", label: "Staff only" },
@@ -1257,13 +1341,29 @@ export default function AdminDashboard() {
                             type="number"
                             className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-2 text-sm text-white"
                             placeholder="20"
-                            onBlur={(event) =>
-                              event.target.value &&
-                              giveCredits(player.id, Number(event.target.value))
+                            value={playerDrafts[player.id]?.addCredits ?? ""}
+                            onChange={(event) =>
+                              setPlayerDrafts((prev) => ({
+                                ...prev,
+                                [player.id]: {
+                                  ...(prev[player.id] ?? {}),
+                                  addCredits: event.target.value,
+                                },
+                              }))
                             }
                           />
                           <button
-                            onClick={() => giveCredits(player.id, 10)}
+                            onClick={() =>
+                              setPlayerDrafts((prev) => ({
+                                ...prev,
+                                [player.id]: {
+                                  ...(prev[player.id] ?? {}),
+                                  addCredits: String(
+                                    (Number(prev[player.id]?.addCredits ?? 0) || 0) + 10
+                                  ),
+                                },
+                              }))
+                            }
                             className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-white"
                           >
                             +10
@@ -1276,15 +1376,34 @@ export default function AdminDashboard() {
                           type="text"
                           className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-2 text-sm text-white"
                           placeholder={player.username ?? "username"}
-                          onBlur={(event) => updateUsername(player.id, event.target.value)}
+                          value={
+                            playerDrafts[player.id]?.username ?? (player.username ?? "")
+                          }
+                          onChange={(event) =>
+                            setPlayerDrafts((prev) => ({
+                              ...prev,
+                              [player.id]: {
+                                ...(prev[player.id] ?? {}),
+                                username: event.target.value,
+                              },
+                            }))
+                          }
                         />
                       </label>
                       <label className="grid gap-2 text-sm">
                         <span className="text-[var(--text-muted)]">Current clue</span>
                         <select
-                          value={player.currentClue}
+                          value={
+                            playerDrafts[player.id]?.currentClue ?? player.currentClue
+                          }
                           onChange={(event) =>
-                            setCurrentClue(player.id, Number(event.target.value))
+                            setPlayerDrafts((prev) => ({
+                              ...prev,
+                              [player.id]: {
+                                ...(prev[player.id] ?? {}),
+                                currentClue: Number(event.target.value),
+                              },
+                            }))
                           }
                           className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-2 text-sm text-white"
                         >
@@ -1331,6 +1450,12 @@ export default function AdminDashboard() {
                         </div>
                       </label>
                       <div className="flex flex-wrap gap-3">
+                        <button
+                          onClick={() => savePlayerDraft(player)}
+                          className="rounded-full bg-[var(--accent-gold)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-black"
+                        >
+                          Save changes
+                        </button>
                         <button
                           onClick={() => resetProgress(player.id)}
                           className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-white"
@@ -1487,15 +1612,6 @@ export default function AdminDashboard() {
                     Manage access, profiles, and authorized individuals.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setUserStatus("Saved user changes.");
-                    loadUsers();
-                  }}
-                  className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
-                >
-                  Save
-                </button>
               </div>
             </div>
 
@@ -1600,9 +1716,17 @@ export default function AdminDashboard() {
                           <input
                             type="text"
                             className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white"
-                            defaultValue={user.full_name ?? ""}
-                            onBlur={(event) =>
-                              updateUserProfile(user.id, { full_name: event.target.value })
+                            value={
+                              userDrafts[user.id]?.full_name ?? (user.full_name ?? "")
+                            }
+                            onChange={(event) =>
+                              setUserDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...(prev[user.id] ?? {}),
+                                  full_name: event.target.value,
+                                },
+                              }))
                             }
                           />
                         </label>
@@ -1611,9 +1735,17 @@ export default function AdminDashboard() {
                           <input
                             type="text"
                             className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white"
-                            defaultValue={user.username ?? ""}
-                            onBlur={(event) =>
-                              updateUserProfile(user.id, { username: event.target.value })
+                            value={
+                              userDrafts[user.id]?.username ?? (user.username ?? "")
+                            }
+                            onChange={(event) =>
+                              setUserDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...(prev[user.id] ?? {}),
+                                  username: event.target.value,
+                                },
+                              }))
                             }
                           />
                         </label>
@@ -1622,16 +1754,34 @@ export default function AdminDashboard() {
                           <input
                             type="email"
                             className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white"
-                            defaultValue={user.email ?? ""}
-                            onBlur={(event) => updateUserEmail(user.id, event.target.value)}
+                            value={userDrafts[user.id]?.email ?? (user.email ?? "")}
+                            onChange={(event) =>
+                              setUserDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...(prev[user.id] ?? {}),
+                                  email: event.target.value,
+                                },
+                              }))
+                            }
                           />
                         </label>
                         <label className="grid gap-2 text-xs text-[var(--text-muted)]">
                           Role
                           <select
                             className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            defaultValue={user.role ?? "player"}
-                            onChange={(event) => updateUserRole(user.id, event.target.value)}
+                            value={
+                              userDrafts[user.id]?.role ?? (user.role ?? "player")
+                            }
+                            onChange={(event) =>
+                              setUserDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...(prev[user.id] ?? {}),
+                                  role: event.target.value,
+                                },
+                              }))
+                            }
                             disabled={user.role === "admin"}
                           >
                             <option value="player">Player</option>
@@ -1649,6 +1799,12 @@ export default function AdminDashboard() {
 
                     {isExpanded && (
                       <div className="mt-4 flex flex-wrap gap-3" data-no-toggle>
+                        <button
+                          onClick={() => saveUserDraft(user)}
+                          className="rounded-full bg-[var(--accent-gold)] px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-black"
+                        >
+                          Save changes
+                        </button>
                         <button
                           onClick={() => sendResetLink(user.id, user.email)}
                           className="rounded-full border border-[var(--stroke)] px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-white"

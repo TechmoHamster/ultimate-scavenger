@@ -23,6 +23,13 @@ export async function GET(request: Request) {
 
   const userId = userData.user.id;
 
+  const { data: gameSettings } = await supabase
+    .from("game_settings")
+    .select("starting_wallet")
+    .eq("id", 1)
+    .maybeSingle();
+  const startingWallet = gameSettings?.starting_wallet ?? 20;
+
   let { data: playerState } = await supabase
     .from("player_state")
     .select("current_clue_index, wallet_balance")
@@ -33,9 +40,9 @@ export async function GET(request: Request) {
     await supabase.from("player_state").insert({
       player_id: userId,
       current_clue_index: 0,
-      wallet_balance: 20,
+      wallet_balance: startingWallet,
     });
-    playerState = { current_clue_index: 0, wallet_balance: 20 };
+    playerState = { current_clue_index: 0, wallet_balance: startingWallet };
   }
 
   const { data: completions } = await supabase

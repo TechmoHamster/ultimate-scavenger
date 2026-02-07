@@ -155,6 +155,32 @@ alter table public.clues drop column if exists radius_meters;
 alter table public.clues drop column if exists lat;
 alter table public.clues drop column if exists lng;
 
+-- Global game settings (admin only)
+create table if not exists public.game_settings (
+  id int primary key default 1,
+  require_gps boolean default true,
+  require_password boolean default true,
+  enable_hints boolean default true,
+  allow_replay boolean default false,
+  show_demo_helper boolean default false,
+  starting_wallet int default 20,
+  max_hint_cost int default 14,
+  default_radius int default 120,
+  autosave_delay int default 2,
+  updated_at timestamptz default now()
+);
+
+alter table public.game_settings enable row level security;
+
+drop policy if exists "Game settings are readable by admins" on public.game_settings;
+drop policy if exists "Game settings are manageable by admins" on public.game_settings;
+
+create policy "Game settings are readable by admins" on public.game_settings
+for select using (public.is_admin());
+
+create policy "Game settings are manageable by admins" on public.game_settings
+for all using (public.is_admin());
+
 -- Player state and progress
 create table if not exists public.player_state (
   player_id uuid primary key references auth.users(id) on delete cascade,

@@ -13,6 +13,7 @@ import MenuButton from "@/components/menu-button";
 import { useClues, type Clue, toDefaultClues } from "@/lib/clues";
 import { usePlayerProgress, recordCompletion, recordHintPurchase } from "@/lib/player-progress";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useGameSettings } from "@/lib/game-settings";
 
 const formatDistance = (distance: number | null, ready: boolean) => {
   if (distance === null) return ready ? "Location captured" : "Awaiting location";
@@ -38,11 +39,17 @@ function ExperienceContent() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [celebrationMessage, setCelebrationMessage] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   const { clues } = useClues();
   const progress = usePlayerProgress(user);
+  const { settings: gameSettings, loading: settingsLoading } = useGameSettings();
 
-  const isGateLoading = (loading && !user) || (user && (progress.loading || !progress.state));
+  const isGateLoading =
+    (loading && !user) ||
+    (user && (progress.loading || !progress.state)) ||
+    redirecting ||
+    settingsLoading;
 
   useEffect(() => {
     if (user) return;
@@ -83,6 +90,9 @@ function ExperienceContent() {
     if (user && !progress.state) return;
     const rawStep = Number(searchParams.get("step"));
     const hasStepParam = searchParams.has("step");
+    const reviewParam = searchParams.get("review");
+    const isReviewMode =
+      reviewParam === "1" || reviewParam === "true" || reviewParam === "yes";
     const maxIndex = Math.max(trackerClues.length - 1, 0);
     const progressStep = progress.state?.lastStepId ?? 0;
     const completedIdsRaw = progress.state?.completedStepIds ?? [];
@@ -92,16 +102,32 @@ function ExperienceContent() {
     const effectiveProgressStep = progressStep;
     const requestedStep =
       hasStepParam && Number.isFinite(rawStep) && rawStep >= 0 ? rawStep : effectiveProgressStep;
-    const allowedStep = demoMode
-      ? requestedStep
-      : Math.min(requestedStep, effectiveProgressStep);
+    const shouldForceCurrent =
+      !demoMode && !allowReplay && !isReviewMode && requestedStep !== effectiveProgressStep;
+    const allowedStep = shouldForceCurrent ? effectiveProgressStep : requestedStep;
+
+    if (!demoMode && !allowReplay && !isReviewMode && requestedStep < effectiveProgressStep) {
+      setStatusNote(null);
+      setRedirecting(true);
+      router.replace("/experience/current");
+      return;
+    }
 
     if (!demoMode && hasStepParam && requestedStep > effectiveProgressStep) {
       setStatusNote("That clue is locked. Returning you to your current clue.");
-      router.replace(`/experience?step=${effectiveProgressStep}`);
-    } else {
-      setStatusNote(null);
+      setRedirecting(true);
+      router.replace("/experience/current");
+      return;
     }
+
+    if (shouldForceCurrent && hasStepParam) {
+      setStatusNote(null);
+      setRedirecting(true);
+      router.replace("/experience/current");
+      return;
+    }
+
+    setStatusNote(null);
 
     const unlockParam = searchParams.get("unlock");
     const sourceParam = searchParams.get("source");
@@ -111,6 +137,7 @@ function ExperienceContent() {
         unlockParam === "true" ||
         unlockParam === "yes" ||
         sourceParam === "qr");
+    setRedirecting(false);
     setStepId(Math.min(Math.max(allowedStep, 0), maxIndex));
     setPassword("");
     setShowUnlock(shouldUnlock);
@@ -124,6 +151,7 @@ function ExperienceContent() {
     progress.state?.completedStepIds,
     trackerClues.length,
     demoMode,
+    allowReplay,
     isAdmin,
     progress.loading,
     user,
@@ -137,13 +165,25 @@ function ExperienceContent() {
   const effectiveProgressStep = progressStep;
   
   useEffect(() => {
-    if (demoMode) return;
+    const reviewParam = searchParams.get("review");
+    const isReviewMode =
+      reviewParam === "1" || reviewParam === "true" || reviewParam === "yes";
+    if (demoMode || allowReplay || isReviewMode) return;
     if (progress.loading || !progress.state) return;
     const currentStep = effectiveProgressStep;
-    if (stepId > currentStep) {
+    if (stepId !== currentStep) {
       router.replace(`/experience?step=${currentStep}`);
     }
-  }, [demoMode, effectiveProgressStep, stepId, router, progress.loading, progress.state]);
+  }, [
+    demoMode,
+    allowReplay,
+    effectiveProgressStep,
+    stepId,
+    router,
+    progress.loading,
+    progress.state,
+    searchParams,
+  ]);
 
   const step: Clue | undefined = useMemo(
     () => trackerClues.find((clue) => clue.clue_index === stepId),
@@ -152,13 +192,22 @@ function ExperienceContent() {
   const isCompleted = completedIds.includes(stepId);
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
-  const requiresUnlock = step ? step.clue_index !== 0 : false;
+  const requirePassword = gameSettings.requirePassword;
+  const requireGps = gameSettings.requireGps;
+  const allowReplay = gameSettings.allowReplay;
+  const globalHintsEnabled = gameSettings.enableHints;
+  const showDemoHelper = gameSettings.showDemoHelper;
+  const requiresUnlock = step
+    ? step.clue_index !== 0 && (requirePassword || requireGps)
+    : false;
   const hintLimit = step?.hint_limit ?? step?.hints?.length ?? 0;
-  const hintsEnabled = (step?.hints_enabled ?? true) && hintLimit > 0;
+  const hintsEnabled =
+    globalHintsEnabled && (step?.hints_enabled ?? true) && hintLimit > 0;
   const visibleHints = hintsEnabled ? (step?.hints ?? []).slice(0, hintLimit) : [];
   const previousCompletedId = completedIds.length
     ? Math.max(...completedIds.filter((id) => id < stepId), -1)
     : -1;
+  const allowBackNavigation = demoMode || allowReplay;
 
   const handleLocationCheck = () => {
     setGeoStatus("pending");
@@ -197,9 +246,9 @@ function ExperienceContent() {
 
       const payload = {
         clueIndex: step.clue_index,
-        password,
-        coords: coords ?? (demoMode && DEMO_GEO_OVERRIDE ? DEMO_COORDS : null),
-        allowMissingGeo: demoMode && !DEMO_GEO_OVERRIDE,
+        password: requirePassword ? password : "",
+        coords: requireGps ? coords ?? (demoMode && DEMO_GEO_OVERRIDE ? DEMO_COORDS : null) : null,
+        allowMissingGeo: !requireGps || (demoMode && !DEMO_GEO_OVERRIDE),
       };
 
       const response = await fetch("/api/validate-clue", {
@@ -420,9 +469,11 @@ function ExperienceContent() {
                 <span className="rounded-full border border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]">
                   Clue solved
                 </span>
-                {previousCompletedId >= 0 && (
+                {allowBackNavigation && previousCompletedId >= 0 && (
                   <button
-                    onClick={() => router.push(`/experience?step=${previousCompletedId}`)}
+                    onClick={() =>
+                      router.push(`/experience?step=${previousCompletedId}&review=1`)
+                    }
                     className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
                   >
                     Previous clue
@@ -460,49 +511,53 @@ function ExperienceContent() {
                 {showUnlock && (
                   <div>
                     <div className="mt-5 grid gap-4">
-                      <label className="grid gap-2 text-sm">
-                        <span className="text-[var(--text-muted)]">Password</span>
-                        <input
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                          className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
-                          placeholder="Enter the location name"
-                        />
-                      </label>
-                      <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 min-w-0 self-start">
-                        <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                          GPS Verification
-                        </p>
-                        <p className="mt-2 text-sm text-white">
-                          {formatDistance(distance, geoStatus === "ready")}
-                        </p>
-                        {demoUi && (
-                          <p className="mt-1 text-xs text-[var(--accent-emerald)]">
-                            {DEMO_GEO_OVERRIDE
-                              ? "Demo mode uses test coordinates for geo verification."
-                              : "Demo mode skips geo verification."}
+                      {requirePassword && (
+                        <label className="grid gap-2 text-sm">
+                          <span className="text-[var(--text-muted)]">Password</span>
+                          <input
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                            placeholder="Enter the location name"
+                          />
+                        </label>
+                      )}
+                      {requireGps && (
+                        <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 min-w-0 self-start">
+                          <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                            GPS Verification
                           </p>
-                        )}
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          <button
-                            onClick={handleLocationCheck}
-                            className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
-                          >
-                            {geoStatus === "pending" ? "Checking..." : "Check location"}
-                          </button>
-                          {geoStatus === "ready" && (
-                            <span
-                              className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.2em] ${
-                                distance !== null
-                                  ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
-                                  : "bg-[var(--stroke)]/20 text-[var(--text-muted)]"
-                              }`}
-                            >
-                              {distance !== null ? "Checked" : "Ready"}
-                            </span>
+                          <p className="mt-2 text-sm text-white">
+                            {formatDistance(distance, geoStatus === "ready")}
+                          </p>
+                          {(demoUi || showDemoHelper) && (
+                            <p className="mt-1 text-xs text-[var(--accent-emerald)]">
+                              {DEMO_GEO_OVERRIDE
+                                ? "Demo mode uses test coordinates for geo verification."
+                                : "Demo mode skips geo verification."}
+                            </p>
                           )}
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <button
+                              onClick={handleLocationCheck}
+                              className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
+                            >
+                              {geoStatus === "pending" ? "Checking..." : "Check location"}
+                            </button>
+                            {geoStatus === "ready" && (
+                              <span
+                                className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.2em] ${
+                                  distance !== null
+                                    ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
+                                    : "bg-[var(--stroke)]/20 text-[var(--text-muted)]"
+                                }`}
+                              >
+                                {distance !== null ? "Checked" : "Ready"}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                     <button
                       onClick={handleCompleteStep}
@@ -527,9 +582,9 @@ function ExperienceContent() {
             )}
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {!isCompleted && previousCompletedId >= 0 && (
+              {allowBackNavigation && !isCompleted && previousCompletedId >= 0 && (
                 <button
-                  onClick={() => router.push(`/experience?step=${previousCompletedId}`)}
+                  onClick={() => router.push(`/experience?step=${previousCompletedId}&review=1`)}
                   className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
                 >
                   Previous clue
@@ -612,15 +667,21 @@ function ExperienceContent() {
                       const isCurrentProgress = card.clue_index === effectiveProgressStep;
                       const isCurrentView = card.clue_index === stepId;
                       const isFinal = card.is_final;
-                      const isAccessible = demoMode || card.clue_index <= effectiveProgressStep;
-                      const isLocked = !demoMode && card.clue_index > effectiveProgressStep;
+                      const isAccessible =
+                        demoMode ||
+                        card.clue_index === effectiveProgressStep ||
+                        (allowReplay && card.clue_index < effectiveProgressStep);
+                      const isLocked = !demoMode && !isAccessible;
                       const showUnlock = isCurrentProgress && !completed;
                       return (
                         <div key={card.id} className="flex items-center gap-3">
                           <button
                             onClick={() => {
                               if (!isAccessible) return;
-                              router.push(`/experience?step=${card.clue_index}`);
+                              const isReview =
+                                card.clue_index < effectiveProgressStep && !demoMode && !allowReplay;
+                              const reviewSuffix = isReview ? "&review=1" : "";
+                              router.push(`/experience?step=${card.clue_index}${reviewSuffix}`);
                             }}
                             className={`flex min-w-[72px] flex-col items-center gap-2 ${
                               isLocked ? "pointer-events-none opacity-50" : ""
@@ -665,13 +726,13 @@ function ExperienceContent() {
                     })}
                   </div>
                 </div>
-                {demoUi && (
+                {(demoUi || showDemoHelper) && (
                   <p className="text-xs text-[var(--text-muted)]">
                     Tap any circle to jump between clues.
                   </p>
                 )}
               </div>
-              {demoUi && (
+              {(demoUi || showDemoHelper) && (
                 <>
                   <p className="mt-4 text-xs text-[var(--text-muted)]">
                     Need to restart? Use the account screen to reset progress.

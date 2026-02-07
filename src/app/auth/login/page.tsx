@@ -51,7 +51,7 @@ function LoginContent() {
       return;
     }
 
-    router.push("/experience/current");
+    router.push("/");
   };
 
   const handleReset = async () => {

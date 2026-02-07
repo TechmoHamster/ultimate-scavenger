@@ -45,10 +45,109 @@ export default function GameDesignPanel({
   const cluesSectionRef = useRef<HTMLDivElement | null>(null);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [hasUserEdits, setHasUserEdits] = useState(false);
+  const controlDefaults = {
+    requireGps: true,
+    requirePassword: true,
+    enableHints: true,
+    allowReplay: false,
+    showDemoHelper: false,
+    startingWallet: 20,
+    maxHintCost: 14,
+    defaultRadius: 120,
+    autosaveDelay: 2,
+  };
+  const [controlDraft, setControlDraft] = useState(controlDefaults);
+  const [controlDirty, setControlDirty] = useState(false);
 
   const notifyStatus = (message: string) => {
     onStatusChange?.(message);
   };
+
+  const updateControl = (
+    field: keyof typeof controlDefaults,
+    value: boolean | number
+  ) => {
+    setControlDirty(true);
+    setControlDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const saveControlPanel = () => {
+    const run = async () => {
+      if (!isAdmin) {
+        notifyStatus("Only admins can save control settings.");
+        return;
+      }
+      const supabase = createSupabaseBrowserClient();
+      const payload = {
+        id: 1,
+        require_gps: controlDraft.requireGps,
+        require_password: controlDraft.requirePassword,
+        enable_hints: controlDraft.enableHints,
+        allow_replay: controlDraft.allowReplay,
+        show_demo_helper: controlDraft.showDemoHelper,
+        starting_wallet: controlDraft.startingWallet,
+        max_hint_cost: controlDraft.maxHintCost,
+        default_radius: controlDraft.defaultRadius,
+        autosave_delay: controlDraft.autosaveDelay,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from("game_settings").upsert(payload, {
+        onConflict: "id",
+      });
+      if (error) {
+        notifyStatus(error.message ?? "Unable to save control settings.");
+        return;
+      }
+      setControlDirty(false);
+      notifyStatus("Control panel settings saved.");
+    };
+
+    run();
+  };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const load = async () => {
+      const supabase = createSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("game_settings")
+        .select(
+          [
+            "require_gps",
+            "require_password",
+            "enable_hints",
+            "allow_replay",
+            "show_demo_helper",
+            "starting_wallet",
+            "max_hint_cost",
+            "default_radius",
+            "autosave_delay",
+          ].join(",")
+        )
+        .eq("id", 1)
+        .maybeSingle();
+
+      if (error) {
+        notifyStatus(error.message ?? "Unable to load control settings.");
+        return;
+      }
+      if (!data) return;
+      setControlDraft({
+        requireGps: data.require_gps ?? controlDefaults.requireGps,
+        requirePassword: data.require_password ?? controlDefaults.requirePassword,
+        enableHints: data.enable_hints ?? controlDefaults.enableHints,
+        allowReplay: data.allow_replay ?? controlDefaults.allowReplay,
+        showDemoHelper: data.show_demo_helper ?? controlDefaults.showDemoHelper,
+        startingWallet: data.starting_wallet ?? controlDefaults.startingWallet,
+        maxHintCost: data.max_hint_cost ?? controlDefaults.maxHintCost,
+        defaultRadius: data.default_radius ?? controlDefaults.defaultRadius,
+        autosaveDelay: data.autosave_delay ?? controlDefaults.autosaveDelay,
+      });
+      setControlDirty(false);
+    };
+
+    load();
+  }, [isAdmin]);
 
   useEffect(() => {
     const nextDrafts = clues.map((clue) => ({
@@ -585,11 +684,11 @@ export default function GameDesignPanel({
           </p>
           <div className="mt-4 grid gap-3 text-sm text-[var(--text-muted)]">
             {[
-              { label: "Require GPS verification", enabled: true },
-              { label: "Require password unlock", enabled: true },
-              { label: "Enable hint purchases", enabled: true },
-              { label: "Allow replay of completed clues", enabled: false },
-              { label: "Show demo-only helper text", enabled: false },
+              { key: "requireGps", label: "Require GPS verification" },
+              { key: "requirePassword", label: "Require password unlock" },
+              { key: "enableHints", label: "Enable hint purchases" },
+              { key: "allowReplay", label: "Allow replay of completed clues" },
+              { key: "showDemoHelper", label: "Show demo-only helper text" },
             ].map((item) => (
               <label
                 key={item.label}
@@ -599,7 +698,13 @@ export default function GameDesignPanel({
                 <span className="relative inline-flex h-6 w-11 items-center">
                   <input
                     type="checkbox"
-                    defaultChecked={item.enabled}
+                    checked={controlDraft[item.key as keyof typeof controlDefaults] as boolean}
+                    onChange={(event) =>
+                      updateControl(
+                        item.key as keyof typeof controlDefaults,
+                        event.target.checked
+                      )
+                    }
                     className="peer h-0 w-0 opacity-0"
                   />
                   <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
@@ -610,24 +715,43 @@ export default function GameDesignPanel({
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {[
-              { label: "Starting wallet credits", placeholder: "20" },
-              { label: "Max hint cost", placeholder: "14" },
-              { label: "Default GPS radius (m)", placeholder: "120" },
-              { label: "Auto-save delay (s)", placeholder: "2" },
+              { key: "startingWallet", label: "Starting wallet credits" },
+              { key: "maxHintCost", label: "Max hint cost" },
+              { key: "defaultRadius", label: "Default GPS radius (m)" },
+              { key: "autosaveDelay", label: "Auto-save delay (s)" },
             ].map((field) => (
               <label key={field.label} className="grid content-start gap-2 text-xs text-[var(--text-muted)]">
                 {field.label}
                 <input
                   type="number"
-                  placeholder={field.placeholder}
+                  value={controlDraft[field.key as keyof typeof controlDefaults] as number}
+                  onChange={(event) =>
+                    updateControl(
+                      field.key as keyof typeof controlDefaults,
+                      Number(event.target.value)
+                    )
+                  }
                   className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                 />
               </label>
             ))}
           </div>
-          <p className="mt-4 text-xs text-[var(--text-muted)]">
-            These controls are UI-only right now. Wire them to Supabase once you confirm the rules.
-          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={saveControlPanel}
+              className="rounded-full bg-[var(--accent-gold)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-black"
+            >
+              Save control settings
+            </button>
+            <span className="text-xs text-[var(--text-muted)]">
+              Changes apply after saving. Stored in Supabase.
+            </span>
+            {controlDirty && (
+              <span className="rounded-full border border-[var(--accent-gold)]/40 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                Unsaved changes
+              </span>
+            )}
+          </div>
         </div>
         <div className="grid gap-6">
           <div className="glass-panel rounded-3xl p-6 md:p-8">

@@ -10,6 +10,7 @@ import { useProfile } from "@/lib/profile";
 import { useDemoSettings } from "@/lib/demo";
 import { usePlayerProgress } from "@/lib/player-progress";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useClues, toDefaultClues } from "@/lib/clues";
 
 export default function Home() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
   const { user, profile, loading } = useProfile();
   const progress = usePlayerProgress(user);
+  const { clues } = useClues();
   const isAdmin = profile?.role === "admin";
   const { demoMode, demoUi, playerView, toggleDemo, togglePlayerView } = useDemoSettings(
     Boolean(isAdmin)
@@ -63,18 +65,18 @@ export default function Home() {
     setState(progress.state);
   }, [user, progress.state]);
 
-  const totalSteps = steps.length;
   const completedCount =
     progress.state?.completedStepIds.length ?? state?.completedStepIds.length ?? 0;
-  const progressPercent = totalSteps ? Math.round((completedCount / totalSteps) * 100) : 0;
   const isAuthenticated = Boolean(user) || (authChecked && sessionExists);
   const isProfileLoading = Boolean(user) && (loading || progress.loading);
   const displayName = isProfileLoading
     ? "Loading profile..."
     : profile?.full_name || progress.state?.name || state?.name || "Awaiting account";
-  const completedSteps = progress.state?.completedStepIds ?? state?.completedStepIds ?? [];
   const currentStepId = progress.state?.lastStepId ?? state?.lastStepId ?? 0;
-  const currentStep = steps[currentStepId] ?? steps[0];
+  const trackerClues = clues.length ? clues : toDefaultClues();
+  const totalClues = trackerClues.length;
+  const currentStep =
+    trackerClues.find((clue) => clue.clue_index === currentStepId) ?? trackerClues[0];
   const hintsUsed = Object.values(progress.state?.purchasedHints ?? {}).reduce(
     (acc, hintIds) => acc + hintIds.length,
     0
@@ -108,7 +110,7 @@ export default function Home() {
   const heroStats = [
     { label: "Clues Completed", value: completedCount },
     { label: "Wallet", value: progress.state?.wallet ?? state?.wallet ?? 0 },
-    { label: "Progress", value: `${progressPercent}%` },
+    { label: "Progress", value: `${totalClues ? Math.round((completedCount / totalClues) * 100) : 0}%` },
   ];
 
   if (loading || !authChecked || !isAuthenticated) {
@@ -300,12 +302,12 @@ export default function Home() {
               <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4">
                 <p className="text-sm text-[var(--text-muted)]">Adventure roadmap</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {steps.map((step) => (
+                  {trackerClues.map((step) => (
                     <span
-                      key={step.id}
+                      key={step.id ?? step.clue_index}
                       className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em] ${
                         (progress.state?.completedStepIds ?? state?.completedStepIds ?? []).includes(
-                          step.id
+                          step.clue_index ?? step.id
                         )
                           ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
                           : "bg-black/40 text-[var(--text-muted)]"

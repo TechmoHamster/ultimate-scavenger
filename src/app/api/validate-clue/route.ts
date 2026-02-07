@@ -54,6 +54,14 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   const isAdmin = profile?.role === "admin";
+  const { data: gameSettings } = await supabase
+    .from("game_settings")
+    .select("require_gps, require_password")
+    .eq("id", 1)
+    .maybeSingle();
+
+  const requirePassword = gameSettings?.require_password ?? true;
+  const requireGps = gameSettings?.require_gps ?? true;
 
   const { data: clueRow } = await supabase
     .from("clues")
@@ -75,42 +83,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, distance: null });
   }
 
-  if (!secret?.password_hash && !secret?.password && !secret?.password_ciphertext) {
-    return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
-  }
+  if (requirePassword) {
+    if (!secret?.password_hash && !secret?.password && !secret?.password_ciphertext) {
+      return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
+    }
 
-  const inputPassword = body.password ?? "";
-  if (!inputPassword) {
-    return NextResponse.json({ ok: false, reason: "Missing password" }, { status: 200 });
-  }
+    const inputPassword = body.password ?? "";
+    if (!inputPassword) {
+      return NextResponse.json({ ok: false, reason: "Missing password" }, { status: 200 });
+    }
 
-  if (secret?.password_ciphertext) {
-    try {
-      const stored = normalizePassword(decryptSecret(secret.password_ciphertext));
-      const input = normalizePassword(inputPassword);
-      if (!input || !stored.includes(input)) {
+    if (secret?.password_ciphertext) {
+      try {
+        const stored = normalizePassword(decryptSecret(secret.password_ciphertext));
+        const input = normalizePassword(inputPassword);
+        if (!input || !stored.includes(input)) {
+          return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
+        }
+      } catch {
         return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
       }
-    } catch {
-      return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
+    } else if (secret?.password_hash) {
+      if (!verifyPassword(inputPassword, secret.password_hash)) {
+        return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
+      }
+    } else if (secret?.password) {
+      const normalized = normalizePassword(inputPassword);
+      if (!normalized || !normalizePassword(secret.password).includes(normalized)) {
+        return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
+      }
+      const upgraded = hashPassword(inputPassword);
+      await supabase
+        .from("clue_secrets")
+        .update({ password_hash: upgraded, password: null })
+        .eq("clue_id", clueRow.id);
     }
-  } else if (secret?.password_hash) {
-    if (!verifyPassword(inputPassword, secret.password_hash)) {
-      return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
-    }
-  } else if (secret?.password) {
-    const normalized = normalizePassword(inputPassword);
-    if (!normalized || !normalizePassword(secret.password).includes(normalized)) {
-      return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
-    }
-    const upgraded = hashPassword(inputPassword);
-    await supabase
-      .from("clue_secrets")
-      .update({ password_hash: upgraded, password: null })
-      .eq("clue_id", clueRow.id);
   }
 
-  if (secret.radius_meters && secret.lat && secret.lng) {
+  if (requireGps && secret.radius_meters && secret.lat && secret.lng) {
     if (!body.coords) {
       if (body.allowMissingGeo && isAdmin) {
         return NextResponse.json({ ok: true, distance: null });
