@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -28,14 +28,27 @@ export default function MenuButton({
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const isActive = (path: string) => pathname === path;
   const itemClass = (active: boolean) =>
     `w-full rounded-full px-4 py-2 text-left text-xs uppercase tracking-[0.3em] ${
       active ? "text-[var(--accent-gold)]" : "text-white hover:text-[var(--accent-gold)]"
     }`;
 
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!wrapperRef.current) return;
+      if (!wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <button
         onClick={() => setOpen((prev) => !prev)}
         className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-white"
@@ -45,7 +58,10 @@ export default function MenuButton({
       {open && (
         <div className="absolute right-0 top-12 z-20 min-w-[200px] rounded-2xl border border-[var(--stroke)] bg-[var(--panel-strong)] p-3 shadow-xl">
           <button
-            onClick={() => router.push("/")}
+            onClick={() => {
+              router.push("/");
+              setOpen(false);
+            }}
             className={itemClass(isActive("/"))}
             aria-current={isActive("/") ? "page" : undefined}
           >
@@ -53,7 +69,10 @@ export default function MenuButton({
           </button>
           {showCurrentClue && (
             <button
-              onClick={() => router.push("/experience/current")}
+              onClick={() => {
+                router.push("/experience/current");
+                setOpen(false);
+              }}
               className={`mt-2 ${itemClass(isActive("/experience"))}`}
               aria-current={isActive("/experience") ? "page" : undefined}
             >
@@ -62,7 +81,10 @@ export default function MenuButton({
           )}
           {showProfile && (
             <button
-              onClick={() => router.push("/account")}
+              onClick={() => {
+                router.push("/account");
+                setOpen(false);
+              }}
               className={`mt-2 ${itemClass(isActive("/account"))}`}
               aria-current={isActive("/account") ? "page" : undefined}
             >
@@ -71,7 +93,10 @@ export default function MenuButton({
           )}
           {showHowToPlay && (
             <button
-              onClick={() => router.push("/how-to-play")}
+              onClick={() => {
+                router.push("/how-to-play");
+                setOpen(false);
+              }}
               className={`mt-2 ${itemClass(isActive("/how-to-play"))}`}
               aria-current={isActive("/how-to-play") ? "page" : undefined}
             >
@@ -84,6 +109,7 @@ export default function MenuButton({
                 const supabase = createSupabaseBrowserClient();
                 await supabase.auth.signOut();
                 router.push("/auth/name");
+                setOpen(false);
               }}
               className="mt-2 w-full rounded-full px-4 py-2 text-left text-xs uppercase tracking-[0.3em] text-white hover:text-[var(--accent-gold)]"
             >
@@ -93,7 +119,10 @@ export default function MenuButton({
           {adminControls?.enabled && (
             <>
               <button
-                onClick={() => router.push("/admin/dashboard")}
+                onClick={() => {
+                  router.push("/admin/dashboard");
+                  setOpen(false);
+                }}
                 className={`mt-3 w-full rounded-full border border-[var(--stroke)] px-4 py-2 text-left text-xs uppercase tracking-[0.3em] ${
                   isActive("/admin/dashboard")
                     ? "text-[var(--accent-gold)]"

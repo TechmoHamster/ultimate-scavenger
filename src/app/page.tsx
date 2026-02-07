@@ -16,6 +16,7 @@ export default function Home() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [sessionExists, setSessionExists] = useState(false);
   const { user, profile, loading } = useProfile();
   const progress = usePlayerProgress(user);
   const isAdmin = profile?.role === "admin";
@@ -26,6 +27,7 @@ export default function Home() {
   useEffect(() => {
     if (!loading && !user) {
       if (typeof document !== "undefined" && document.cookie.includes("psh_session=1")) {
+        setSessionExists(true);
         return;
       }
       const checkSession = async () => {
@@ -33,7 +35,9 @@ export default function Home() {
         const { data } = await supabase.auth.getSession();
         if (!data.session) {
           router.replace("/auth/name");
+          return;
         }
+        setSessionExists(true);
       };
       checkSession();
       return;
@@ -53,6 +57,7 @@ export default function Home() {
   const completedCount =
     progress.state?.completedStepIds.length ?? state?.completedStepIds.length ?? 0;
   const progressPercent = totalSteps ? Math.round((completedCount / totalSteps) * 100) : 0;
+  const isAuthenticated = Boolean(user || sessionExists);
   const isProfileLoading = Boolean(user) && (loading || progress.loading);
   const displayName = isProfileLoading
     ? "Loading profile..."
@@ -96,7 +101,7 @@ export default function Home() {
     { label: "Progress", value: `${progressPercent}%` },
   ];
 
-  if (loading || !user) {
+  if (loading || !isAuthenticated) {
     return <div className="page-shell min-h-screen px-6 py-10 md:px-12 md:py-16" />;
   }
 

@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     try {
       const stored = normalizePassword(decryptSecret(secret.password_ciphertext));
       const input = normalizePassword(inputPassword);
-      if (!input || (input.length < 3 ? stored !== input : !stored.includes(input))) {
+      if (!input || !stored.includes(input)) {
         return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
       }
     } catch {
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     }
   } else if (secret?.password) {
     const normalized = normalizePassword(inputPassword);
-    if (!normalized || (normalized.length < 3 ? normalizePassword(secret.password) !== normalized : !normalizePassword(secret.password).includes(normalized))) {
+    if (!normalized || !normalizePassword(secret.password).includes(normalized)) {
       return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
     }
     const upgraded = hashPassword(inputPassword);

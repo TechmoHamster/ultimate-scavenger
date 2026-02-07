@@ -90,9 +90,11 @@ function ExperienceContent() {
     const effectiveProgressStep = Math.max(progressStep, maxCompleted + 1);
     const requestedStep =
       hasStepParam && Number.isFinite(rawStep) && rawStep >= 0 ? rawStep : effectiveProgressStep;
-    const normalizedStep = demoMode ? requestedStep : effectiveProgressStep;
+    const allowedStep = demoMode
+      ? requestedStep
+      : Math.min(requestedStep, effectiveProgressStep);
 
-    if (!demoMode && hasStepParam && requestedStep !== effectiveProgressStep) {
+    if (!demoMode && hasStepParam && requestedStep > effectiveProgressStep) {
       setStatusNote("That clue is locked. Returning you to your current clue.");
       router.replace(`/experience?step=${effectiveProgressStep}`);
     } else {
@@ -102,12 +104,12 @@ function ExperienceContent() {
     const unlockParam = searchParams.get("unlock");
     const sourceParam = searchParams.get("source");
     const shouldUnlock =
-      normalizedStep === requestedStep &&
+      allowedStep === requestedStep &&
       (unlockParam === "1" ||
         unlockParam === "true" ||
         unlockParam === "yes" ||
         sourceParam === "qr");
-    setStepId(Math.min(Math.max(normalizedStep, 0), maxIndex));
+    setStepId(Math.min(Math.max(allowedStep, 0), maxIndex));
     setPassword("");
     setShowUnlock(shouldUnlock);
     setGeoStatus("idle");
@@ -413,6 +415,14 @@ function ExperienceContent() {
                 <span className="rounded-full border border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]">
                   Clue solved
                 </span>
+                {previousCompletedId >= 0 && (
+                  <button
+                    onClick={() => router.push(`/experience?step=${previousCompletedId}`)}
+                    className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                  >
+                    Previous clue
+                  </button>
+                )}
                 {!step?.is_final && (
                   <button
                     onClick={() => router.push(`/experience?step=${nextStepId}`)}
@@ -512,7 +522,7 @@ function ExperienceContent() {
             )}
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {previousCompletedId >= 0 && (
+              {!isCompleted && previousCompletedId >= 0 && (
                 <button
                   onClick={() => router.push(`/experience?step=${previousCompletedId}`)}
                   className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
