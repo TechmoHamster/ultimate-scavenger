@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/consent.html",
+      "headers": {
+        "host": "consent.yourdomain.xyz"
+      }
+    }
+  ]
+}
