@@ -51,20 +51,7 @@ function LoginContent() {
       return;
     }
 
-    let nextStep = 0;
-    if (token) {
-      const response = await fetch("/api/player-progress", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const body = (await response.json()) as {
-          playerState?: { current_clue_index: number };
-        };
-        nextStep = body.playerState?.current_clue_index ?? 0;
-      }
-    }
-
-    router.push(`/experience?step=${nextStep}`);
+    router.push("/experience/current");
   };
 
   const handleReset = async () => {

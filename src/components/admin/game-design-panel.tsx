@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { GoogleMap, Marker, useLoadScript } from "@react-google-maps/api";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProfile } from "@/lib/profile";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { toDefaultClues, useClues, type Clue } from "@/lib/clues";
@@ -22,15 +22,18 @@ type ClueDraft = Clue & {
 
 type GameDesignPanelProps = {
   showBackLink?: boolean;
+  onStatusChange?: (message: string) => void;
 };
 
-export default function GameDesignPanel({ showBackLink = false }: GameDesignPanelProps) {
+export default function GameDesignPanel({
+  showBackLink = false,
+  onStatusChange,
+}: GameDesignPanelProps) {
   const { profile } = useProfile();
   const isAdmin = profile?.role === "admin";
-  const { clues, loading, reload } = useClues();
+  const { clues, reload } = useClues();
   const [drafts, setDrafts] = useState<ClueDraft[]>([]);
   const [originals, setOriginals] = useState<ClueDraft[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [activeClueId, setActiveClueId] = useState<string | null>(null);
   const [quickActionsCollapsed, setQuickActionsCollapsed] = useState(true);
@@ -42,6 +45,10 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
   const cluesSectionRef = useRef<HTMLDivElement | null>(null);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [hasUserEdits, setHasUserEdits] = useState(false);
+
+  const notifyStatus = (message: string) => {
+    onStatusChange?.(message);
+  };
 
   useEffect(() => {
     const nextDrafts = clues.map((clue) => ({
@@ -258,11 +265,11 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
   const saveAll = async () => {
     if (!isAdmin) return;
     try {
-      setStatus("Saving changes...");
+      notifyStatus("Saving clue changes...");
       for (const clue of drafts) {
         await saveClue(clue);
       }
-      setStatus("All changes saved.");
+      notifyStatus("Clue changes saved.");
       reload();
       setOriginals(
         drafts.map((clue) => ({
@@ -273,7 +280,7 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
       );
       setHasUserEdits(false);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to save.");
+      notifyStatus(error instanceof Error ? error.message : "Unable to save clue changes.");
     }
   };
 
@@ -283,10 +290,10 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     const { data: session } = await supabase.auth.getSession();
     const token = session?.session?.access_token;
     if (!token) {
-      setStatus("Missing session token.");
+      notifyStatus("Missing session token.");
       return;
     }
-    setStatus("Securing clue passwords...");
+    notifyStatus("Securing clue passwords...");
     const response = await fetch("/api/admin/migrate-clue-passwords", {
       method: "POST",
       headers: {
@@ -296,10 +303,10 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setStatus(body?.reason ?? "Unable to secure passwords.");
+      notifyStatus(body?.reason ?? "Unable to secure passwords.");
       return;
     }
-    setStatus(`Secured ${body.upgraded ?? 0} password(s).`);
+    notifyStatus(`Secured ${body.upgraded ?? 0} password(s).`);
   };
 
   const downloadQrLinks = () => {
@@ -328,12 +335,12 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     const { data: session } = await supabase.auth.getSession();
     const token = session?.session?.access_token;
     if (!token) {
-      setStatus("Missing session token.");
+      notifyStatus("Missing session token.");
       return;
     }
     const pin = window.prompt("Enter export PIN to reveal passwords:");
     if (!pin) {
-      setStatus("Export cancelled.");
+      notifyStatus("Export cancelled.");
       return;
     }
     const response = await fetch("/api/admin/clue-export", {
@@ -346,7 +353,7 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      setStatus(body?.reason ?? "Unable to export clue data.");
+      notifyStatus(body?.reason ?? "Unable to export clue data.");
       return;
     }
     const text = await response.text();
@@ -366,13 +373,13 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     const supabase = createSupabaseBrowserClient();
     const defaults = toDefaultClues();
 
-    setStatus("Seeding defaults...");
+    notifyStatus("Seeding defaults...");
 
     await supabase.from("clue_hints").delete().neq("id", emptyId);
     const { error } = await supabase.from("clues").delete().neq("id", emptyId);
 
     if (error) {
-      setStatus(error.message);
+      notifyStatus(error.message);
       return;
     }
 
@@ -394,7 +401,7 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
       .select("id, clue_index");
 
     if (insertError || !inserted) {
-      setStatus(insertError?.message ?? "Unable to seed defaults.");
+      notifyStatus(insertError?.message ?? "Unable to seed defaults.");
       return;
     }
 
@@ -415,7 +422,7 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     const { data: session } = await supabase.auth.getSession();
     const token = session?.session?.access_token;
     if (!token) {
-      setStatus("Missing session token.");
+      notifyStatus("Missing session token.");
       return;
     }
 
@@ -439,20 +446,14 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        setStatus(body?.reason ?? "Unable to seed clue secrets.");
+        notifyStatus(body?.reason ?? "Unable to seed clue secrets.");
         return;
       }
     }
 
-    setStatus("Defaults seeded.");
+    notifyStatus("Defaults seeded.");
     reload();
   };
-
-  const statusNote = useMemo(() => {
-    if (!isAdmin) return "Admin access required.";
-    if (loading) return "Loading clues...";
-    return status;
-  }, [isAdmin, loading, status]);
 
   const isClueDirty = (clue: ClueDraft) => {
     const original = originals.find((item) => item.id === clue.id);
@@ -472,8 +473,6 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
     const passwordDirty = Boolean(clue.password?.trim());
     return baseDirty || passwordDirty;
   };
-
-  const hasUnsaved = useMemo(() => drafts.some((clue) => isClueDirty(clue)), [drafts, originals]);
 
   const toggleAll = (next: boolean) => {
     setExpanded((prev) => {
@@ -655,21 +654,6 @@ export default function GameDesignPanel({ showBackLink = false }: GameDesignPane
           </div>
         </div>
       </section>
-
-      {(statusNote || hasUnsaved) && (
-        <div className="flex flex-col gap-3">
-          {statusNote && (
-            <p className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-              {statusNote}
-            </p>
-          )}
-          {hasUnsaved && (
-            <p className="rounded-2xl border border-[var(--accent-coral)]/50 bg-[var(--accent-coral)]/10 px-4 py-3 text-sm text-[var(--text-muted)]">
-              Unsaved changes detected. Save all to keep updates.
-            </p>
-          )}
-        </div>
-      )}
 
       <motion.div
         className="fixed right-6 top-24 z-50 flex justify-end"

@@ -85,9 +85,11 @@ function ExperienceContent() {
     const hasStepParam = searchParams.has("step");
     const maxIndex = Math.max(trackerClues.length - 1, 0);
     const progressStep = progress.state?.lastStepId ?? 0;
-    const completedIds = progress.state?.completedStepIds ?? [];
-    const maxCompleted = completedIds.length ? Math.max(...completedIds) : -1;
-    const effectiveProgressStep = Math.max(progressStep, maxCompleted + 1);
+    const completedIdsRaw = progress.state?.completedStepIds ?? [];
+    const completedIds = progressStep > 0
+      ? completedIdsRaw.filter((id) => id < progressStep)
+      : completedIdsRaw;
+    const effectiveProgressStep = progressStep;
     const requestedStep =
       hasStepParam && Number.isFinite(rawStep) && rawStep >= 0 ? rawStep : effectiveProgressStep;
     const allowedStep = demoMode
@@ -127,18 +129,21 @@ function ExperienceContent() {
     user,
   ]);
 
-  const completedIds = progress.state?.completedStepIds ?? [];
-  const maxCompleted = completedIds.length ? Math.max(...completedIds) : -1;
   const progressStep = progress.state?.lastStepId ?? 0;
-  const effectiveProgressStep = Math.max(progressStep, maxCompleted + 1);
+  const completedIdsRaw = progress.state?.completedStepIds ?? [];
+  const completedIds = progressStep > 0
+    ? completedIdsRaw.filter((id) => id < progressStep)
+    : completedIdsRaw;
+  const effectiveProgressStep = progressStep;
   
   useEffect(() => {
     if (demoMode) return;
+    if (progress.loading || !progress.state) return;
     const currentStep = effectiveProgressStep;
     if (stepId > currentStep) {
       router.replace(`/experience?step=${currentStep}`);
     }
-  }, [demoMode, effectiveProgressStep, stepId, router]);
+  }, [demoMode, effectiveProgressStep, stepId, router, progress.loading, progress.state]);
 
   const step: Clue | undefined = useMemo(
     () => trackerClues.find((clue) => clue.clue_index === stepId),

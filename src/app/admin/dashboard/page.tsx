@@ -94,7 +94,6 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [authorizedNames, setAuthorizedNames] = useState<AuthorizedName[]>([]);
   const [userStatus, setUserStatus] = useState<string | null>(null);
-  const [resetLink, setResetLink] = useState<string | null>(null);
   const [newAuthorizedName, setNewAuthorizedName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"overview" | "players" | "users" | "design" | "sms">(
     "overview"
@@ -426,8 +425,16 @@ export default function AdminDashboard() {
       setUserStatus(body?.reason ?? "Unable to generate reset link.");
       return;
     }
-    setResetLink(body?.link ?? null);
-    setUserStatus("Password reset link generated.");
+    if (body?.link) {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(body.link);
+        setUserStatus("Password reset link copied to clipboard.");
+      } else {
+        setUserStatus("Password reset link generated.");
+      }
+    } else {
+      setUserStatus("Password reset link generated.");
+    }
   };
 
   const deleteUser = async (userId: string) => {
@@ -1019,6 +1026,15 @@ export default function AdminDashboard() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    setStatus("Saved player changes.");
+                    loadPlayers();
+                  }}
+                  className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                >
+                  Save
+                </button>
                 {[
                   { key: "players", label: "Players only" },
                   { key: "staff", label: "Staff only" },
@@ -1038,7 +1054,7 @@ export default function AdminDashboard() {
                     {option.label}
                   </button>
                 ))}
-                <div className="relative z-[200] isolate">
+                <div className="relative z-[500] isolate">
                   <button
                     onClick={() => {
                       setPlayerViewMode("custom");
@@ -1053,7 +1069,7 @@ export default function AdminDashboard() {
                     Filters
                   </button>
                   {playerFilterOpen && (
-                    <div className="absolute right-0 top-12 z-[300] w-64 rounded-2xl border border-[var(--stroke)] bg-[var(--panel-strong)] p-4 shadow-xl">
+                    <div className="absolute right-0 top-12 z-[600] w-64 rounded-2xl border border-[var(--stroke)] bg-[var(--panel-strong)] p-4 shadow-2xl">
                       <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
                         Roles
                       </p>
@@ -1090,8 +1106,10 @@ export default function AdminDashboard() {
                               }`}
                             >
                               <span
-                                className={`h-2.5 w-2.5 rounded-full bg-[var(--accent-gold)] transition ${
-                                  playerRoleFilter[role.key] ? "scale-100 opacity-100" : "scale-50 opacity-0"
+                                className={`h-2.5 w-2.5 rounded-full transition ${
+                                  playerRoleFilter[role.key]
+                                    ? "bg-[var(--accent-gold)] opacity-100 shadow-[0_0_10px_rgba(255,241,143,0.6)]"
+                                    : "bg-transparent opacity-0"
                                 }`}
                               />
                             </span>
@@ -1124,8 +1142,10 @@ export default function AdminDashboard() {
                             }`}
                           >
                             <span
-                              className={`h-2.5 w-2.5 rounded-full bg-[var(--accent-gold)] transition ${
-                                includeDisabledPlayers ? "scale-100 opacity-100" : "scale-50 opacity-0"
+                              className={`h-2.5 w-2.5 rounded-full transition ${
+                                includeDisabledPlayers
+                                  ? "bg-[var(--accent-gold)] opacity-100 shadow-[0_0_10px_rgba(255,241,143,0.6)]"
+                                  : "bg-transparent opacity-0"
                               }`}
                             />
                           </span>
@@ -1454,16 +1474,25 @@ export default function AdminDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
-            {(userStatus || resetLink) && (
-              <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-                {userStatus}
-                {resetLink && (
-                  <div className="mt-2 break-all text-xs text-[var(--accent-gold)]">
-                    Reset link: {resetLink}
-                  </div>
-                )}
+            <div className="glass-panel rounded-3xl p-6 md:p-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-display text-2xl">User Management</h2>
+                  <p className="mt-2 text-sm text-[var(--text-muted)]">
+                    Manage access, profiles, and authorized individuals.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setUserStatus("Saved user changes.");
+                    loadUsers();
+                  }}
+                  className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                >
+                  Save
+                </button>
               </div>
-            )}
+            </div>
 
             <div className="glass-panel rounded-3xl p-6 md:p-8">
               <h2 className="text-display text-2xl">Authorized Individuals</h2>
@@ -1668,7 +1697,7 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
-            <GameDesignPanel />
+            <GameDesignPanel onStatusChange={setStatus} />
           </section>
         )}
 
