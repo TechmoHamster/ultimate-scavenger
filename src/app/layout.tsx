@@ -10,8 +10,20 @@ import "@fontsource/spectral/700.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Scavenger Hunt",
+  title: {
+    default: "Scavenger Hunt",
+    template: "%s",
+  },
+  applicationName: "Scavenger Hunt",
   description: "A cinematic, location-driven scavenger hunt experience.",
+  openGraph: {
+    title: "Scavenger Hunt",
+    description: "A cinematic, location-driven scavenger hunt experience.",
+  },
+  twitter: {
+    title: "Scavenger Hunt",
+    description: "A cinematic, location-driven scavenger hunt experience.",
+  },
 };
 
 export default function RootLayout({

@@ -737,7 +737,12 @@ export default function AdminDashboard() {
             </div>
             <button
               type="button"
-              onClick={() => setBannerVisible(false)}
+              onClick={() => {
+                setBannerVisible(false);
+                setBanner(null);
+                setStatus(null);
+                setUserStatus(null);
+              }}
               className="rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-white"
             >
               Close
