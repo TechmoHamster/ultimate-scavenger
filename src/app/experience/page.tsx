@@ -96,6 +96,8 @@ function ExperienceContent() {
     const rawStep = Number(searchParams.get("step"));
     const hasStepParam = searchParams.has("step");
     const reviewParam = searchParams.get("review");
+    const sourceParam = searchParams.get("source");
+    const isFromCurrent = sourceParam === "current";
     const maxIndex = Math.max(trackerClues.length - 1, 0);
     const progressStep = progress.state?.lastStepId ?? 0;
     const completedIdsRaw = progress.state?.completedStepIds ?? [];
@@ -114,14 +116,14 @@ function ExperienceContent() {
       !demoMode && !allowReplay && !isReviewMode && requestedStep !== effectiveProgressStep;
     const allowedStep = shouldForceCurrent ? effectiveProgressStep : requestedStep;
 
-    if (!demoMode && hasStepParam && requestedStep > effectiveProgressStep) {
+    if (!demoMode && hasStepParam && requestedStep > effectiveProgressStep && !isFromCurrent) {
       setStatusNote("That clue is locked. Returning you to your current clue.");
       setRedirecting(true);
       router.replace("/experience/current");
       return;
     }
 
-    if (shouldForceCurrent && hasStepParam) {
+    if (shouldForceCurrent && hasStepParam && !isFromCurrent) {
       setStatusNote(null);
       setRedirecting(true);
       router.replace("/experience/current");
@@ -131,7 +133,6 @@ function ExperienceContent() {
     setStatusNote(null);
 
     const unlockParam = searchParams.get("unlock");
-    const sourceParam = searchParams.get("source");
     const shouldUnlock =
       allowedStep === requestedStep &&
       (unlockParam === "1" ||

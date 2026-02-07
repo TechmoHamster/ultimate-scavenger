@@ -38,7 +38,7 @@ export default function CurrentExperienceRedirect() {
         playerState?: { current_clue_index: number };
       };
       const nextStep = body.playerState?.current_clue_index ?? 0;
-      router.replace(`/experience?step=${nextStep}`);
+      router.replace(`/experience?step=${nextStep}&source=current`);
     };
 
     if (user) {
