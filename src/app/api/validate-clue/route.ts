@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (requireGps && secret.radius_meters && secret.lat && secret.lng) {
+  if (requireGps && secret && secret.radius_meters && secret.lat && secret.lng) {
     if (!body.coords) {
       if (body.allowMissingGeo && isAdmin) {
         return NextResponse.json({ ok: true, distance: null });
