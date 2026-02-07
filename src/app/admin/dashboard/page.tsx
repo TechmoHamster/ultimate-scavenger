@@ -383,7 +383,7 @@ export default function AdminDashboard() {
       setUserStatus(body?.reason ?? "Unable to update profile.");
       return;
     }
-    setUserStatus("User updated.");
+    pushUserStatus("User updated.");
     loadUsers();
   };
 
@@ -443,14 +443,14 @@ export default function AdminDashboard() {
       setUserStatus(body?.reason ?? "Unable to update role.");
       return;
     }
-    setUserStatus("Role updated.");
+    pushUserStatus("Role updated.");
     loadUsers();
   };
 
   const saveUserDraft = async (user: AdminUser) => {
     const draft = userDrafts[user.id];
     if (!draft) {
-      setUserStatus("No changes to save.");
+      pushUserStatus("No changes to save.");
       return;
     }
 
@@ -469,7 +469,7 @@ export default function AdminDashboard() {
     }
 
     if (tasks.length === 0) {
-      setUserStatus("No changes to save.");
+      pushUserStatus("No changes to save.");
       return;
     }
 
@@ -478,7 +478,7 @@ export default function AdminDashboard() {
       const { [user.id]: _removed, ...rest } = prev;
       return rest;
     });
-    setUserStatus("User changes saved.");
+    pushUserStatus("User changes saved.");
   };
 
   const updateUserEmail = async (userId: string, email: string) => {
@@ -497,7 +497,7 @@ export default function AdminDashboard() {
       setUserStatus(body?.reason ?? "Unable to update email.");
       return;
     }
-    setUserStatus("Email updated.");
+    pushUserStatus("Email updated.");
     loadUsers();
   };
 
@@ -521,12 +521,12 @@ export default function AdminDashboard() {
     if (body?.link) {
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         await navigator.clipboard.writeText(body.link);
-        setUserStatus("Password reset link copied to clipboard.");
+        pushUserStatus("Password reset link copied to clipboard.");
       } else {
-        setUserStatus("Password reset link generated.");
+        pushUserStatus("Password reset link generated.");
       }
     } else {
-      setUserStatus("Password reset link generated.");
+      pushUserStatus("Password reset link generated.");
     }
   };
 
@@ -546,7 +546,7 @@ export default function AdminDashboard() {
       setUserStatus(body?.reason ?? "Unable to delete user.");
       return;
     }
-    setUserStatus("User deleted.");
+    pushUserStatus("User deleted.");
     loadUsers();
   };
 
