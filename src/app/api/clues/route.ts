@@ -6,6 +6,21 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
 );
 
+type ClueRow = {
+  id: string;
+  clue_index: number;
+  label: string;
+  title: string;
+  clue: string;
+  reminder: string | null;
+  reward: number;
+  is_final: boolean;
+  hints_enabled: boolean | null;
+  hint_limit: number | null;
+  hints?: { id: string; sort_order: number; cost: number; text: string }[];
+  secrets?: { requires_unlock: boolean | null }[] | { requires_unlock: boolean | null } | null;
+};
+
 export async function GET() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ ok: false, reason: "Server misconfigured" }, { status: 500 });
@@ -36,7 +51,8 @@ export async function GET() {
     return NextResponse.json({ ok: false, reason: error?.message ?? "No clues found" }, { status: 500 });
   }
 
-  const normalized = data.map((row) => {
+  const rows = (data ?? []) as ClueRow[];
+  const normalized = rows.map((row) => {
     const hints = (row.hints ?? []).sort(
       (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
     );
