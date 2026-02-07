@@ -8,6 +8,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import MenuButton from "@/components/menu-button";
 import { useDemoSettings } from "@/lib/demo";
 import { steps } from "@/lib/steps";
+import { useClues } from "@/lib/clues";
 import GameDesignPanel from "@/components/admin/game-design-panel";
 import { usePlayerProgress } from "@/lib/player-progress";
 import SmsTab from "@/components/admin/sms/sms-tab";
@@ -70,6 +71,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { profile, loading, user } = useProfile();
   const progress = usePlayerProgress(user);
+  const { clues: liveClues } = useClues();
   const isAdmin = profile?.role === "admin" || profile?.role === "moderator";
   const isOwner = profile?.role === "admin";
   const currentUserId = profile?.id ?? user?.id ?? null;
@@ -620,8 +622,24 @@ export default function AdminDashboard() {
   const toggleUserCard = (userId: string) => {
     setExpandedUsers((prev) => ({ ...prev, [userId]: !prev[userId] }));
   };
+  const clueLookup = useMemo(() => {
+    const map = new Map<number, { label: string; title: string }>();
+    liveClues.forEach((clue) => {
+      map.set(clue.clue_index, {
+        label: clue.label ?? `Clue ${clue.clue_index}`,
+        title: clue.title ?? `Clue ${clue.clue_index}`,
+      });
+    });
+    return map;
+  }, [liveClues]);
+
+  const getClueLabel = (index: number) =>
+    clueLookup.get(index)?.label ?? steps[index]?.label ?? `Clue ${index}`;
+  const getClueTitle = (index: number) =>
+    clueLookup.get(index)?.title ?? steps[index]?.title ?? `Clue ${index}`;
+
   const overview = useMemo(() => {
-    const totalClues = steps.length;
+    const totalClues = liveClues.length || steps.length;
     const totalPlayers = playerRows.length;
     const activePlayers = playerRows.filter((player) => !player.is_disabled).length;
     const totalCompletions = playerRows.reduce(
@@ -651,19 +669,19 @@ export default function AdminDashboard() {
 
     const completionFunnel = Array.from({ length: totalClues }, (_, index) => ({
       clue_index: index,
-      label: steps[index]?.label ?? `Clue ${index}`,
+      label: getClueLabel(index),
       completed: playerRows.filter((player) => player.completions.includes(index)).length,
     }));
 
     const progressDistribution = Array.from({ length: totalClues }, (_, index) => ({
       clue_index: index,
-      label: steps[index]?.label ?? `Clue ${index}`,
+      label: getClueLabel(index),
       count: playerRows.filter((player) => player.currentClue === index).length,
     }));
 
     const hintHeatmap = Array.from({ length: totalClues }, (_, index) => ({
       clue_index: index,
-      label: steps[index]?.label ?? `Clue ${index}`,
+      label: getClueLabel(index),
       hints: playerRows.reduce(
         (sum, player) => sum + player.hints.filter((hint) => hint.clue_index === index).length,
         0
@@ -672,7 +690,7 @@ export default function AdminDashboard() {
 
     const avgTimeByClue = Array.from({ length: totalClues }, (_, index) => ({
       clue_index: index,
-      label: steps[index]?.label ?? `Clue ${index}`,
+      label: getClueLabel(index),
       hours: null as number | null,
     }));
 
@@ -986,7 +1004,7 @@ export default function AdminDashboard() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-white">
-                        {entry.playerName} • {steps[entry.clueIndex]?.label ?? `Clue ${entry.clueIndex}`}
+                        {entry.playerName} • {getClueLabel(entry.clueIndex)}
                       </span>
                       <span className="text-xs text-[var(--text-muted)]">
                         {formatSince(entry.timestamp)}
@@ -1272,8 +1290,7 @@ export default function AdminDashboard() {
           )}
           {filteredPlayerRows.map((player) => {
             const isExpanded = expandedPlayers[player.id] ?? false;
-            const clueTitle = (index: number) =>
-              steps.find((step) => step.id === index)?.title ?? `Clue ${index}`;
+            const clueTitle = (index: number) => getClueTitle(index);
             const eventItems = [
               ...player.completionDetails.map((entry) => ({
                 id: `completion-${player.id}-${entry.clue_index}-${entry.completed_at}`,

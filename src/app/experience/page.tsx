@@ -96,8 +96,6 @@ function ExperienceContent() {
     const rawStep = Number(searchParams.get("step"));
     const hasStepParam = searchParams.has("step");
     const reviewParam = searchParams.get("review");
-    const isReviewMode =
-      reviewParam === "1" || reviewParam === "true" || reviewParam === "yes";
     const maxIndex = Math.max(trackerClues.length - 1, 0);
     const progressStep = progress.state?.lastStepId ?? 0;
     const completedIdsRaw = progress.state?.completedStepIds ?? [];
@@ -107,16 +105,14 @@ function ExperienceContent() {
     const effectiveProgressStep = progressStep;
     const requestedStep =
       hasStepParam && Number.isFinite(rawStep) && rawStep >= 0 ? rawStep : effectiveProgressStep;
+    const isReviewMode =
+      reviewParam === "1" ||
+      reviewParam === "true" ||
+      reviewParam === "yes" ||
+      requestedStep < effectiveProgressStep;
     const shouldForceCurrent =
       !demoMode && !allowReplay && !isReviewMode && requestedStep !== effectiveProgressStep;
     const allowedStep = shouldForceCurrent ? effectiveProgressStep : requestedStep;
-
-    if (!demoMode && !allowReplay && !isReviewMode && requestedStep < effectiveProgressStep) {
-      setStatusNote(null);
-      setRedirecting(true);
-      router.replace("/experience/current");
-      return;
-    }
 
     if (!demoMode && hasStepParam && requestedStep > effectiveProgressStep) {
       setStatusNote("That clue is locked. Returning you to your current clue.");
@@ -207,7 +203,7 @@ function ExperienceContent() {
   const previousCompletedId = completedIds.length
     ? Math.max(...completedIds.filter((id) => id < stepId), -1)
     : -1;
-  const allowBackNavigation = demoMode || allowReplay;
+  const allowBackNavigation = demoMode || allowReplay || previousCompletedId >= 0;
 
   const handleLocationCheck = () => {
     setGeoStatus("pending");
@@ -670,6 +666,7 @@ function ExperienceContent() {
                       const isAccessible =
                         demoMode ||
                         card.clue_index === effectiveProgressStep ||
+                        completed ||
                         (allowReplay && card.clue_index < effectiveProgressStep);
                       const isLocked = !demoMode && !isAccessible;
                       const showUnlock = isCurrentProgress && !completed;
