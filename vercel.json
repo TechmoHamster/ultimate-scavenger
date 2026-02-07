@@ -1,11 +1,9 @@
 {
-  "routes": [
+  "rewrites": [
     {
-      "src": "/",
-      "dest": "/consent.html",
-      "headers": {
-        "host": "consent.ultimatescavenger.xyz"
-      }
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "consent.ultimatescavenger.xyz" }],
+      "destination": "/consent.html"
     }
   ]
 }
