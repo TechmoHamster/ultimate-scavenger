@@ -376,25 +376,17 @@ export default function AdminDashboard() {
     toRemove: number[]
   ) => {
     const supabase = createSupabaseBrowserClient();
-    const tasks: Promise<unknown>[] = [];
     if (toAdd.length) {
-      tasks.push(
-        supabase
-          .from("step_completions")
-          .insert(toAdd.map((clue_index) => ({ player_id: playerId, clue_index })))
-      );
+      await supabase
+        .from("step_completions")
+        .insert(toAdd.map((clue_index) => ({ player_id: playerId, clue_index })));
     }
     if (toRemove.length) {
-      tasks.push(
-        supabase
-          .from("step_completions")
-          .delete()
-          .eq("player_id", playerId)
-          .in("clue_index", toRemove)
-      );
-    }
-    if (tasks.length) {
-      await Promise.all(tasks);
+      await supabase
+        .from("step_completions")
+        .delete()
+        .eq("player_id", playerId)
+        .in("clue_index", toRemove);
     }
   };
 
