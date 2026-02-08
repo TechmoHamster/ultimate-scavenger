@@ -104,6 +104,8 @@ create table if not exists public.clues (
   reward int default 0,
   hints_enabled boolean default true,
   hint_limit int default 2,
+  cooldown_enabled boolean default false,
+  cooldown_minutes int default 0,
   is_final boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now()

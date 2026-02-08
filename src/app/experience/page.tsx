@@ -21,6 +21,13 @@ const formatDistance = (distance: number | null, ready: boolean) => {
   return `${Math.round(distance)} m away`;
 };
 
+const formatCooldown = (remainingMs: number) => {
+  const totalSeconds = Math.max(Math.ceil(remainingMs / 1000), 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+};
+
 function ExperienceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -40,6 +47,7 @@ function ExperienceContent() {
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [celebrationMessage, setCelebrationMessage] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
 
   const { clues } = useClues();
   const progress = usePlayerProgress(user);
@@ -192,6 +200,25 @@ function ExperienceContent() {
     [trackerClues, stepId]
   );
   const isCompleted = completedIds.includes(stepId);
+  const completionTimes =
+    progress.state?.completedStepTimes ?? state?.completedStepTimes ?? {};
+  const progressClue: Clue | undefined = useMemo(
+    () => trackerClues.find((clue) => clue.clue_index === effectiveProgressStep),
+    [trackerClues, effectiveProgressStep]
+  );
+  const cooldownEnabled = Boolean(progressClue?.cooldown_enabled);
+  const cooldownMinutes = Math.max(0, progressClue?.cooldown_minutes ?? 0);
+  const previousCompletionAt =
+    effectiveProgressStep > 0 ? completionTimes[effectiveProgressStep - 1] : null;
+  const cooldownEndsAt = useMemo(() => {
+    if (!cooldownEnabled || cooldownMinutes <= 0) return null;
+    if (!previousCompletionAt) return null;
+    const base = new Date(previousCompletionAt).getTime();
+    if (Number.isNaN(base)) return null;
+    return base + cooldownMinutes * 60 * 1000;
+  }, [cooldownEnabled, cooldownMinutes, previousCompletionAt]);
+  const progressCooldownActive = cooldownRemainingMs > 0;
+  const cooldownActive = progressCooldownActive && stepId === effectiveProgressStep;
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
   const requiresUnlock = step
@@ -207,6 +234,20 @@ function ExperienceContent() {
     ? Math.max(...completedIds.filter((id) => id < stepId), -1)
     : -1;
   const allowBackNavigation = demoMode || allowReplay || previousCompletedId >= 0;
+
+  useEffect(() => {
+    if (!cooldownEndsAt) {
+      setCooldownRemainingMs(0);
+      return;
+    }
+    const updateRemaining = () => {
+      const remaining = cooldownEndsAt - Date.now();
+      setCooldownRemainingMs(Math.max(remaining, 0));
+    };
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(interval);
+  }, [cooldownEndsAt]);
 
   const handleLocationCheck = () => {
     setGeoStatus("pending");
@@ -233,6 +274,12 @@ function ExperienceContent() {
 
   const handleCompleteStep = async () => {
     if (!state) return;
+    if (cooldownActive) {
+      setStatusNote(
+        `This clue unlocks in ${formatCooldown(cooldownRemainingMs)}.`
+      );
+      return;
+    }
 
     if (requiresUnlock && step) {
       const supabase = createSupabaseBrowserClient();
@@ -288,6 +335,10 @@ function ExperienceContent() {
         : [...state.completedStepIds, stepId],
       wallet: step && step.reward > 0 ? state.wallet + step.reward : state.wallet,
       lastStepId: nextStepId,
+      completedStepTimes: {
+        ...(state.completedStepTimes ?? {}),
+        [stepId]: new Date().toISOString(),
+      },
     };
 
     if (!user) {
@@ -509,6 +560,11 @@ function ExperienceContent() {
                 </div>
                 {showUnlock && (
                   <div>
+                    {cooldownActive && (
+                      <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-3 text-sm text-[var(--accent-gold)]">
+                        This clue unlocks in {formatCooldown(cooldownRemainingMs)}.
+                      </div>
+                    )}
                     <div className="mt-5 grid gap-4">
                       {requirePassword && (
                         <label className="grid gap-2 text-sm">
@@ -516,6 +572,7 @@ function ExperienceContent() {
                           <input
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
+                            disabled={cooldownActive}
                             className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                             placeholder="Enter the location name"
                           />
@@ -539,6 +596,7 @@ function ExperienceContent() {
                           <div className="mt-4 flex flex-wrap gap-3">
                             <button
                               onClick={handleLocationCheck}
+                              disabled={cooldownActive}
                               className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
                             >
                               {geoStatus === "pending" ? "Checking..." : "Check location"}
@@ -560,6 +618,7 @@ function ExperienceContent() {
                     </div>
                     <button
                       onClick={handleCompleteStep}
+                      disabled={cooldownActive}
                       className="mt-4 w-full rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
                     >
                       Unlock clue
@@ -592,9 +651,12 @@ function ExperienceContent() {
               {!requiresUnlock && !isCompleted && (
                 <button
                   onClick={handleCompleteStep}
+                  disabled={cooldownActive}
                   className="glow-ring mx-auto w-full max-w-xs rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
                 >
-                  Mark clue complete
+                  {cooldownActive
+                    ? `Unlocks in ${formatCooldown(cooldownRemainingMs)}`
+                    : "Mark clue complete"}
                 </button>
               )}
               {step?.is_final && isCompleted && (
@@ -672,7 +734,8 @@ function ExperienceContent() {
                         completed ||
                         (allowReplay && card.clue_index < effectiveProgressStep);
                       const isLocked = !demoMode && !isAccessible;
-                      const showUnlock = isCurrentProgress && !completed;
+                      const showUnlock =
+                        isCurrentProgress && !completed && !progressCooldownActive;
                       return (
                         <div key={card.id} className="flex items-center gap-3">
                           <button

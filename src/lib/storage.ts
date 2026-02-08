@@ -6,6 +6,7 @@ export type PlayerState = {
   email: string;
   wallet: number;
   completedStepIds: number[];
+  completedStepTimes?: Record<number, string>;
   purchasedHints: Record<number, string[]>;
   lastStepId: number;
   createdAt: string;
@@ -20,6 +21,7 @@ export const defaultState = (): PlayerState => ({
   email: "",
   wallet: 0,
   completedStepIds: [],
+  completedStepTimes: {},
   purchasedHints: {},
   lastStepId: 0,
   createdAt: new Date().toISOString(),

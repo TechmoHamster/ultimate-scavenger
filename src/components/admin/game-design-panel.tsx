@@ -18,6 +18,8 @@ type ClueDraft = Clue & {
   radius_meters?: number | null;
   lat?: number | null;
   lng?: number | null;
+  cooldown_enabled?: boolean;
+  cooldown_minutes?: number | null;
 };
 
 type GameDesignPanelProps = {
@@ -173,6 +175,8 @@ export default function GameDesignPanel({
       lng: null,
       hints_enabled: clue.hints_enabled ?? true,
       hint_limit: clue.hint_limit ?? clue.hints.length,
+      cooldown_enabled: clue.cooldown_enabled ?? false,
+      cooldown_minutes: clue.cooldown_minutes ?? 0,
     }));
     setDrafts(nextDrafts);
     setExpanded((prev) => {
@@ -284,6 +288,8 @@ export default function GameDesignPanel({
       is_final: clue.is_final,
       hints_enabled: clue.hints_enabled ?? true,
       hint_limit: clue.hint_limit ?? clue.hints.length,
+      cooldown_enabled: clue.cooldown_enabled ?? false,
+      cooldown_minutes: clue.cooldown_minutes ?? 0,
     };
 
     let clueId = clue.id.startsWith("local-") ? null : clue.id;
@@ -362,6 +368,8 @@ export default function GameDesignPanel({
               hints_enabled: clue.hints_enabled ?? true,
               hint_limit: clue.hint_limit ?? clue.hints.length,
               hints: clue.hints,
+              cooldown_enabled: clue.cooldown_enabled ?? false,
+              cooldown_minutes: clue.cooldown_minutes ?? 0,
               radius_meters: clue.radius_meters ?? null,
               lat: clue.lat ?? null,
               lng: clue.lng ?? null,
@@ -576,6 +584,8 @@ export default function GameDesignPanel({
       clue.reward !== original.reward ||
       clue.hints_enabled !== original.hints_enabled ||
       (clue.hint_limit ?? clue.hints.length) !== (original.hint_limit ?? original.hints.length) ||
+      clue.cooldown_enabled !== original.cooldown_enabled ||
+      (clue.cooldown_minutes ?? 0) !== (original.cooldown_minutes ?? 0) ||
       clue.radius_meters !== original.radius_meters ||
       clue.lat !== original.lat ||
       clue.lng !== original.lng ||
@@ -1101,6 +1111,39 @@ export default function GameDesignPanel({
                       <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
                       <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
                     </span>
+                  </label>
+                  <label className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
+                    <span>Enable cooldown for this clue</span>
+                    <span className="relative inline-flex h-6 w-11 items-center">
+                      <input
+                        type="checkbox"
+                        checked={clue.cooldown_enabled ?? false}
+                        onChange={(event) =>
+                          updateClue(clueIndex, "cooldown_enabled", event.target.checked)
+                        }
+                        className="peer h-0 w-0 opacity-0"
+                      />
+                      <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
+                      <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
+                    </span>
+                  </label>
+                  <label className="grid content-start gap-2 text-sm">
+                    <span className="text-[var(--text-muted)]">Cooldown (minutes)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={clue.cooldown_minutes ?? 0}
+                      disabled={!clue.cooldown_enabled}
+                      onChange={(event) =>
+                        updateClue(
+                          clueIndex,
+                          "cooldown_minutes",
+                          event.target.value === "" ? 0 : Number(event.target.value)
+                        )
+                      }
+                      className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                    />
                   </label>
                   <label className="grid content-start gap-2 text-sm">
                     <span className="text-[var(--text-muted)]">Clue password</span>

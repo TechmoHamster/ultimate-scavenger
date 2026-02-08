@@ -47,7 +47,7 @@ export async function GET(request: Request) {
 
   const { data: completions } = await supabase
     .from("step_completions")
-    .select("clue_index")
+    .select("clue_index, completed_at")
     .eq("player_id", userId);
 
   const { data: hints } = await supabase

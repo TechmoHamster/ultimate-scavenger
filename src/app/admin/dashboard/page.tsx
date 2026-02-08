@@ -81,7 +81,15 @@ export default function AdminDashboard() {
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
   const [playerDrafts, setPlayerDrafts] = useState<
-    Record<string, { username?: string; currentClue?: number; addCredits?: string }>
+    Record<
+      string,
+      {
+        username?: string;
+        currentClue?: number;
+        addCredits?: string;
+        completionToggles?: Record<number, boolean>;
+      }
+    >
   >({});
   const [playerViewMode, setPlayerViewMode] = useState<"players" | "staff" | "all" | "custom">(
     "players"
@@ -354,6 +362,42 @@ export default function AdminDashboard() {
     loadPlayers();
   };
 
+  const seedCompletionDraft = (player: PlayerRow) => {
+    const seeded: Record<number, boolean> = {};
+    player.completions.forEach((index) => {
+      seeded[index] = true;
+    });
+    return seeded;
+  };
+
+  const applyCompletionDiff = async (
+    playerId: string,
+    toAdd: number[],
+    toRemove: number[]
+  ) => {
+    const supabase = createSupabaseBrowserClient();
+    const tasks: Promise<unknown>[] = [];
+    if (toAdd.length) {
+      tasks.push(
+        supabase
+          .from("step_completions")
+          .insert(toAdd.map((clue_index) => ({ player_id: playerId, clue_index })))
+      );
+    }
+    if (toRemove.length) {
+      tasks.push(
+        supabase
+          .from("step_completions")
+          .delete()
+          .eq("player_id", playerId)
+          .in("clue_index", toRemove)
+      );
+    }
+    if (tasks.length) {
+      await Promise.all(tasks);
+    }
+  };
+
   const grantHint = async (playerId: string, clueIndex: number, hintOrder: number, cost: number) => {
     const supabase = createSupabaseBrowserClient();
     await supabase.from("hint_purchases").insert({
@@ -416,12 +460,27 @@ export default function AdminDashboard() {
       }
     }
 
+    if (draft.completionToggles) {
+      const original = new Set(player.completions);
+      const desired = new Set(
+        Object.entries(draft.completionToggles)
+          .filter(([, enabled]) => enabled)
+          .map(([index]) => Number(index))
+      );
+      const toAdd = Array.from(desired).filter((index) => !original.has(index));
+      const toRemove = Array.from(original).filter((index) => !desired.has(index));
+      if (toAdd.length || toRemove.length) {
+        tasks.push(applyCompletionDiff(player.id, toAdd, toRemove) as Promise<void>);
+      }
+    }
+
     if (tasks.length === 0) {
       pushStatus("No changes to save.");
       return;
     }
 
     await Promise.all(tasks);
+    loadPlayers();
     setPlayerDrafts((prev) => {
       const { [player.id]: _removed, ...rest } = prev;
       return rest;
@@ -631,6 +690,21 @@ export default function AdminDashboard() {
       });
     });
     return map;
+  }, [liveClues]);
+
+  const clueOptions = useMemo(() => {
+    if (liveClues.length) {
+      return liveClues.map((clue) => ({
+        index: clue.clue_index,
+        label: clue.label ?? `Clue ${clue.clue_index}`,
+        title: clue.title ?? `Clue ${clue.clue_index}`,
+      }));
+    }
+    return steps.map((step) => ({
+      index: step.id,
+      label: step.label,
+      title: step.title,
+    }));
   }, [liveClues]);
 
   const getClueLabel = (index: number) =>
@@ -1424,9 +1498,9 @@ export default function AdminDashboard() {
                           }
                           className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-2 text-sm text-white"
                         >
-                          {steps.map((step) => (
-                            <option key={step.id} value={step.id}>
-                              {step.label}
+                          {clueOptions.map((clue) => (
+                            <option key={clue.index} value={clue.index}>
+                              {clue.label}
                             </option>
                           ))}
                         </select>
@@ -1493,25 +1567,41 @@ export default function AdminDashboard() {
                         Progress toggles
                       </p>
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        {steps.map((step) => {
-                          const completed = player.completions.includes(step.id);
+                        {clueOptions.map((clue) => {
+                          const completionDraft = playerDrafts[player.id]?.completionToggles;
+                          const completed = completionDraft
+                            ? Boolean(completionDraft[clue.index])
+                            : player.completions.includes(clue.index);
                           return (
                             <div
-                              key={`${player.id}-toggle-${step.id}`}
+                              key={`${player.id}-toggle-${clue.index}`}
                               className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3"
                             >
                               <div>
-                                <p className="text-sm text-white">{step.label}</p>
+                                <p className="text-sm text-white">{clue.label}</p>
                                 <p className="text-xs text-[var(--text-muted)]">
-                                  {step.title}
+                                  {clue.title}
                                 </p>
                               </div>
                               <button
                                 type="button"
                                 onClick={() =>
-                                  completed
-                                    ? removeCompletion(player.id, step.id)
-                                    : markCompletion(player.id, step.id)
+                                  setPlayerDrafts((prev) => {
+                                    const seeded =
+                                      prev[player.id]?.completionToggles ??
+                                      seedCompletionDraft(player);
+                                    const next = {
+                                      ...seeded,
+                                      [clue.index]: !seeded[clue.index],
+                                    };
+                                    return {
+                                      ...prev,
+                                      [player.id]: {
+                                        ...(prev[player.id] ?? {}),
+                                        completionToggles: next,
+                                      },
+                                    };
+                                  })
                                 }
                                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
                                   completed

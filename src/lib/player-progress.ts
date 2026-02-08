@@ -42,11 +42,17 @@ export const usePlayerProgress = (user: User | null) => {
 
     const body = (await response.json()) as {
       playerState?: { current_clue_index: number; wallet_balance: number };
-      completions?: { clue_index: number }[];
+      completions?: { clue_index: number; completed_at?: string | null }[];
       hints?: { clue_index: number; hint_order: number }[];
     };
 
     const completed = (body.completions ?? []).map((row) => row.clue_index);
+    const completionTimes: Record<number, string> = {};
+    (body.completions ?? []).forEach((row) => {
+      if (row.completed_at) {
+        completionTimes[row.clue_index] = row.completed_at;
+      }
+    });
     const purchased: Record<number, string[]> = {};
     (body.hints ?? []).forEach((row) => {
       if (!purchased[row.clue_index]) purchased[row.clue_index] = [];
@@ -59,6 +65,7 @@ export const usePlayerProgress = (user: User | null) => {
       email: user.email ?? "",
       wallet: body.playerState?.wallet_balance ?? 20,
       completedStepIds: completed,
+      completedStepTimes: completionTimes,
       purchasedHints: purchased,
       lastStepId: body.playerState?.current_clue_index ?? 0,
       createdAt: new Date().toISOString(),

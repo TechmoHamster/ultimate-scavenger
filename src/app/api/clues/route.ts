@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
@@ -17,6 +19,8 @@ type ClueRow = {
   is_final: boolean;
   hints_enabled: boolean | null;
   hint_limit: number | null;
+  cooldown_enabled: boolean | null;
+  cooldown_minutes: number | null;
   hints?: { id: string; sort_order: number; cost: number; text: string }[];
   secrets?: { requires_unlock: boolean | null }[] | { requires_unlock: boolean | null } | null;
 };
@@ -40,6 +44,8 @@ export async function GET() {
         "is_final",
         "hints_enabled",
         "hint_limit",
+        "cooldown_enabled",
+        "cooldown_minutes",
         "hints:clue_hints(id, sort_order, cost, text)",
         "secrets:clue_secrets(requires_unlock)",
       ].join(",")
@@ -70,6 +76,8 @@ export async function GET() {
       is_final: row.is_final,
       hints_enabled: row.hints_enabled,
       hint_limit: row.hint_limit,
+      cooldown_enabled: row.cooldown_enabled,
+      cooldown_minutes: row.cooldown_minutes,
       hints,
       requires_unlock: requiresUnlock,
     };

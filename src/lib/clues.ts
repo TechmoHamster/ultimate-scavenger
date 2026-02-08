@@ -24,6 +24,8 @@ export type Clue = {
   requires_unlock?: boolean;
   hints_enabled?: boolean;
   hint_limit?: number | null;
+  cooldown_enabled?: boolean;
+  cooldown_minutes?: number | null;
 };
 
 export const toDefaultClues = (): Clue[] =>
@@ -45,6 +47,8 @@ export const toDefaultClues = (): Clue[] =>
     hints_enabled: true,
     hint_limit: step.hints.length,
     requires_unlock: true,
+    cooldown_enabled: false,
+    cooldown_minutes: 0,
   }));
 
 export const useClues = () => {
