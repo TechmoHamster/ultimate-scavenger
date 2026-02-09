@@ -255,7 +255,7 @@ function ExperienceContent() {
     ? Math.max(...completedIds.filter((id) => id < stepId), -1)
     : -1;
   const allowBackNavigation = demoMode || allowReplay || previousCompletedId >= 0;
-  const showCooldownOnly = cooldownLockActive && !isCompleted;
+  const showCooldownOnly = cooldownLockActive;
   const experienceGridCols = showCooldownOnly
     ? "lg:grid-cols-1"
     : "lg:grid-cols-[1.1fr_0.9fr]";
