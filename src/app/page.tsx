@@ -19,6 +19,7 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [sessionExists, setSessionExists] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
   const { user, profile, loading } = useProfile();
   const progress = usePlayerProgress(user);
   const { clues } = useClues();
@@ -73,10 +74,24 @@ export default function Home() {
     ? "Loading profile..."
     : profile?.full_name || progress.state?.name || state?.name || "Awaiting account";
   const currentStepId = progress.state?.lastStepId ?? state?.lastStepId ?? 0;
+  const completionTimes =
+    progress.state?.completedStepTimes ?? state?.completedStepTimes ?? {};
   const trackerClues = clues.length ? clues : toDefaultClues();
   const totalClues = trackerClues.length;
   const currentStep =
     trackerClues.find((clue) => clue.clue_index === currentStepId) ?? trackerClues[0];
+  const cooldownEnabled = Boolean(currentStep?.cooldown_enabled);
+  const cooldownMinutes = Math.max(0, currentStep?.cooldown_minutes ?? 0);
+  const previousCompletionAt =
+    currentStepId > 0 ? completionTimes[currentStepId - 1] : null;
+  const cooldownEndsAt = useMemo(() => {
+    if (!cooldownEnabled || cooldownMinutes <= 0) return null;
+    if (!previousCompletionAt) return null;
+    const base = new Date(previousCompletionAt).getTime();
+    if (Number.isNaN(base)) return null;
+    return base + cooldownMinutes * 60 * 1000;
+  }, [cooldownEnabled, cooldownMinutes, previousCompletionAt]);
+  const cooldownActive = cooldownRemainingMs > 0;
   const hintsUsed = Object.values(progress.state?.purchasedHints ?? {}).reduce(
     (acc, hintIds) => acc + hintIds.length,
     0
@@ -112,6 +127,27 @@ export default function Home() {
     { label: "Wallet", value: progress.state?.wallet ?? state?.wallet ?? 0 },
     { label: "Progress", value: `${totalClues ? Math.round((completedCount / totalClues) * 100) : 0}%` },
   ];
+
+  const formatCooldown = (ms: number) => {
+    const totalSeconds = Math.max(Math.ceil(ms / 1000), 0);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  useEffect(() => {
+    if (!cooldownEndsAt) {
+      setCooldownRemainingMs(0);
+      return;
+    }
+    const updateRemaining = () => {
+      const remaining = cooldownEndsAt - Date.now();
+      setCooldownRemainingMs(Math.max(remaining, 0));
+    };
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(interval);
+  }, [cooldownEndsAt]);
 
   if (loading || !authChecked || !isAuthenticated) {
     return <div className="page-shell min-h-screen px-6 py-10 md:px-12 md:py-16" />;
@@ -213,6 +249,8 @@ export default function Home() {
               <p className="mt-3 text-sm text-[var(--text-muted)]">
                 {isProfileLoading
                   ? "Syncing your progress..."
+                  : cooldownActive
+                  ? `Your next clue unlocks in ${formatCooldown(cooldownRemainingMs)}.`
                   : "Your next clue is ready whenever you are."}
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -289,6 +327,19 @@ export default function Home() {
                     {hintsUsed}
                   </p>
                 </div>
+                {cooldownActive && (
+                  <div className="rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-4 md:col-span-2">
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      Cooldown active
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-white">
+                      Next clue unlocks in {formatCooldown(cooldownRemainingMs)}.
+                    </p>
+                    <p className="mt-2 text-xs text-[var(--text-muted)]">
+                      We&apos;ll email you when it&apos;s ready.
+                    </p>
+                  </div>
+                )}
                 <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 md:col-span-2">
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
                     Next reward

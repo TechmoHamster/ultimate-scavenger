@@ -118,11 +118,44 @@ create table if not exists public.clue_secrets (
   password_hash text,
   password_ciphertext text,
   requires_unlock boolean default true,
+  requires_password boolean default true,
+  requires_gps boolean default true,
   radius_meters int,
   lat double precision,
   lng double precision,
+  requires_artifact boolean default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
+);
+
+alter table public.clue_secrets add column if not exists requires_password boolean default true;
+alter table public.clue_secrets add column if not exists requires_gps boolean default true;
+
+create table if not exists public.artifact_tokens (
+  id uuid primary key default uuid_generate_v4(),
+  clue_id uuid references public.clues(id) on delete cascade unique,
+  token_hash text not null,
+  token_ciphertext text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.artifact_claims (
+  id uuid primary key default uuid_generate_v4(),
+  player_id uuid references auth.users(id) on delete cascade,
+  clue_id uuid references public.clues(id) on delete cascade,
+  clue_index int not null,
+  token_id uuid references public.artifact_tokens(id) on delete cascade,
+  claimed_at timestamptz default now(),
+  unique (player_id, clue_id)
+);
+
+create table if not exists public.cooldown_notifications (
+  id uuid primary key default uuid_generate_v4(),
+  player_id uuid references auth.users(id) on delete cascade,
+  clue_index int not null,
+  sent_at timestamptz default now(),
+  unique (player_id, clue_index)
 );
 
 create table if not exists public.clue_hints (
@@ -138,12 +171,21 @@ create table if not exists public.clue_hints (
 alter table public.clues enable row level security;
 alter table public.clue_hints enable row level security;
 alter table public.clue_secrets enable row level security;
+alter table public.artifact_tokens enable row level security;
+alter table public.artifact_claims enable row level security;
+alter table public.cooldown_notifications enable row level security;
 
 drop policy if exists "Clues are readable by anyone" on public.clues;
 drop policy if exists "Hints are readable by anyone" on public.clue_hints;
 drop policy if exists "Admins can manage clues" on public.clues;
 drop policy if exists "Admins can manage hints" on public.clue_hints;
 drop policy if exists "Admins can manage clue secrets" on public.clue_secrets;
+drop policy if exists "Admins can manage artifact tokens" on public.artifact_tokens;
+drop policy if exists "Artifact claims readable by owner" on public.artifact_claims;
+drop policy if exists "Artifact claims insert by owner" on public.artifact_claims;
+drop policy if exists "Cooldown notifications readable by owner" on public.cooldown_notifications;
+drop policy if exists "Cooldown notifications insert by owner" on public.cooldown_notifications;
+drop policy if exists "Staff can manage cooldown notifications" on public.cooldown_notifications;
 
 create policy "Clues are readable by anyone" on public.clues for select using (true);
 create policy "Hints are readable by anyone" on public.clue_hints for select using (true);
@@ -151,6 +193,17 @@ create policy "Hints are readable by anyone" on public.clue_hints for select usi
 create policy "Admins can manage clues" on public.clues for all using (public.is_admin());
 create policy "Admins can manage hints" on public.clue_hints for all using (public.is_admin());
 create policy "Admins can manage clue secrets" on public.clue_secrets for all using (public.is_admin());
+create policy "Admins can manage artifact tokens" on public.artifact_tokens for all using (public.is_admin());
+create policy "Artifact claims readable by owner" on public.artifact_claims
+for select using (auth.uid() = player_id);
+create policy "Artifact claims insert by owner" on public.artifact_claims
+for insert with check (auth.uid() = player_id);
+create policy "Cooldown notifications readable by owner" on public.cooldown_notifications
+for select using (auth.uid() = player_id);
+create policy "Cooldown notifications insert by owner" on public.cooldown_notifications
+for insert with check (auth.uid() = player_id);
+create policy "Staff can manage cooldown notifications" on public.cooldown_notifications
+for all using (public.is_moderator());
 
 alter table public.clues drop column if exists password;
 alter table public.clues drop column if exists radius_meters;

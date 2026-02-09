@@ -55,6 +55,11 @@ export async function GET(request: Request) {
     .select("clue_index, hint_order")
     .eq("player_id", userId);
 
+  const { data: artifactClaims } = await supabase
+    .from("artifact_claims")
+    .select("clue_index")
+    .eq("player_id", userId);
+
   const completedIndexes = (completions ?? []).map((row) => row.clue_index);
   const maxCompleted = completedIndexes.length ? Math.max(...completedIndexes) : -1;
   const desiredCurrent = Math.max(maxCompleted + 1, 0);
@@ -72,5 +77,6 @@ export async function GET(request: Request) {
     playerState,
     completions: completions ?? [],
     hints: hints ?? [],
+    artifactClaims: artifactClaims ?? [],
   });
 }

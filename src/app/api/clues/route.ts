@@ -22,7 +22,20 @@ type ClueRow = {
   cooldown_enabled: boolean | null;
   cooldown_minutes: number | null;
   hints?: { id: string; sort_order: number; cost: number; text: string }[];
-  secrets?: { requires_unlock: boolean | null }[] | { requires_unlock: boolean | null } | null;
+  secrets?:
+    | {
+        requires_unlock: boolean | null;
+        requires_password: boolean | null;
+        requires_gps: boolean | null;
+        requires_artifact: boolean | null;
+      }[]
+    | {
+        requires_unlock: boolean | null;
+        requires_password: boolean | null;
+        requires_gps: boolean | null;
+        requires_artifact: boolean | null;
+      }
+    | null;
 };
 
 export async function GET() {
@@ -47,7 +60,7 @@ export async function GET() {
         "cooldown_enabled",
         "cooldown_minutes",
         "hints:clue_hints(id, sort_order, cost, text)",
-        "secrets:clue_secrets(requires_unlock)",
+        "secrets:clue_secrets(requires_unlock, requires_password, requires_gps, requires_artifact)",
       ].join(",")
     )
     .order("clue_index", { ascending: true })
@@ -65,6 +78,15 @@ export async function GET() {
     const requiresUnlock = Array.isArray(row.secrets)
       ? row.secrets[0]?.requires_unlock ?? true
       : row.secrets?.requires_unlock ?? true;
+    const requiresPassword = Array.isArray(row.secrets)
+      ? row.secrets[0]?.requires_password ?? true
+      : row.secrets?.requires_password ?? true;
+    const requiresGps = Array.isArray(row.secrets)
+      ? row.secrets[0]?.requires_gps ?? true
+      : row.secrets?.requires_gps ?? true;
+    const requiresArtifact = Array.isArray(row.secrets)
+      ? row.secrets[0]?.requires_artifact ?? true
+      : row.secrets?.requires_artifact ?? true;
     return {
       id: row.id,
       clue_index: row.clue_index,
@@ -80,6 +102,9 @@ export async function GET() {
       cooldown_minutes: row.cooldown_minutes,
       hints,
       requires_unlock: requiresUnlock,
+      requires_password: requiresPassword,
+      requires_gps: requiresGps,
+      requires_artifact: requiresArtifact,
     };
   });
 

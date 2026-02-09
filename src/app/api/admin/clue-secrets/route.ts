@@ -12,6 +12,9 @@ type Payload = {
   clueId?: string;
   password?: string | null;
   requires_unlock?: boolean;
+  requires_artifact?: boolean;
+  requires_password?: boolean;
+  requires_gps?: boolean;
   radius_meters?: number | null;
   lat?: number | null;
   lng?: number | null;
@@ -50,6 +53,9 @@ export async function POST(request: Request) {
 
   const update: Record<string, unknown> = {
     requires_unlock: body.requires_unlock ?? true,
+    requires_artifact: body.requires_artifact ?? true,
+    requires_password: body.requires_password ?? true,
+    requires_gps: body.requires_gps ?? true,
     radius_meters: body.radius_meters ?? null,
     lat: body.lat ?? null,
     lng: body.lng ?? null,
@@ -126,7 +132,9 @@ export async function GET(request: Request) {
 
   const { data: secrets } = await supabase
     .from("clue_secrets")
-    .select("clue_id, password_ciphertext, radius_meters, lat, lng, requires_unlock");
+    .select(
+      "clue_id, password_ciphertext, radius_meters, lat, lng, requires_unlock, requires_artifact, requires_password, requires_gps"
+    );
 
   const { data: hints } = await supabase
     .from("clue_hints")
@@ -149,6 +157,7 @@ export async function GET(request: Request) {
   (clues ?? []).forEach((clue) => {
     const secret = secretsMap.get(clue.id);
     const requiresUnlock = secret?.requires_unlock !== false;
+    const requiresArtifact = secret?.requires_artifact !== false;
     let password = "[none]";
     if (requiresUnlock) {
       if (secret?.password_ciphertext) {
@@ -168,6 +177,7 @@ export async function GET(request: Request) {
     lines.push(`Final: ${clue.is_final ? "Yes" : "No"}`);
     lines.push(`QR URL: ${origin}/experience?step=${clue.clue_index}&unlock=1&source=qr`);
     lines.push(`Lock required: ${requiresUnlock ? "Yes" : "No"}`);
+    lines.push(`Artifact required: ${requiresArtifact ? "Yes" : "No"}`);
     lines.push(`Password: ${password}`);
     lines.push(`Latitude: ${secret?.lat ?? "—"}`);
     lines.push(`Longitude: ${secret?.lng ?? "—"}`);

@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
   const { data: clueRow } = await supabase
     .from("clues")
-    .select("id")
+    .select("id, clue_index, cooldown_enabled, cooldown_minutes")
     .eq("clue_index", clueIndex)
     .maybeSingle();
 
@@ -75,15 +75,72 @@ export async function POST(request: Request) {
 
   const { data: secret } = await supabase
     .from("clue_secrets")
-    .select("password, password_hash, password_ciphertext, radius_meters, lat, lng, requires_unlock")
+    .select(
+      [
+        "password",
+        "password_hash",
+        "password_ciphertext",
+        "radius_meters",
+        "lat",
+        "lng",
+        "requires_unlock",
+        "requires_artifact",
+        "requires_password",
+        "requires_gps",
+      ].join(",")
+    )
     .eq("clue_id", clueRow.id)
     .maybeSingle();
 
-  if (secret?.requires_unlock === false) {
+  const lockEnabled = secret?.requires_unlock !== false;
+  const requiresArtifact = lockEnabled && (secret?.requires_artifact ?? true);
+  const requiresPassword = lockEnabled && (secret?.requires_password ?? true) && requirePassword;
+  const requiresGps = lockEnabled && (secret?.requires_gps ?? true) && requireGps;
+
+  const cooldownEnabled = Boolean(clueRow?.cooldown_enabled);
+  const cooldownMinutes = Math.max(0, clueRow?.cooldown_minutes ?? 0);
+  if (!isAdmin && cooldownEnabled && cooldownMinutes > 0 && clueIndex > 0) {
+    const { data: previousCompletion } = await supabase
+      .from("step_completions")
+      .select("completed_at")
+      .eq("player_id", userData.user.id)
+      .eq("clue_index", clueIndex - 1)
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (previousCompletion?.completed_at) {
+      const base = new Date(previousCompletion.completed_at).getTime();
+      if (!Number.isNaN(base)) {
+        const endsAt = base + cooldownMinutes * 60 * 1000;
+        const remaining = endsAt - Date.now();
+        if (remaining > 0) {
+          return NextResponse.json(
+            { ok: false, reason: "Cooldown active", remainingMs: remaining },
+            { status: 200 }
+          );
+        }
+      }
+    }
+  }
+
+  if (!lockEnabled) {
     return NextResponse.json({ ok: true, distance: null });
   }
 
-  if (requirePassword) {
+  if (requiresArtifact && !isAdmin) {
+    const { data: claim } = await supabase
+      .from("artifact_claims")
+      .select("id")
+      .eq("player_id", userData.user.id)
+      .eq("clue_id", clueRow.id)
+      .maybeSingle();
+    if (!claim) {
+      return NextResponse.json({ ok: false, reason: "Missing QR" }, { status: 200 });
+    }
+  }
+
+  if (requiresPassword) {
     if (!secret?.password_hash && !secret?.password && !secret?.password_ciphertext) {
       return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
     }
@@ -120,7 +177,10 @@ export async function POST(request: Request) {
     }
   }
 
-  if (requireGps && secret && secret.radius_meters && secret.lat && secret.lng) {
+  if (requiresGps) {
+    if (!secret || !secret.radius_meters || !secret.lat || !secret.lng) {
+      return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
+    }
     if (!body.coords) {
       if (body.allowMissingGeo && isAdmin) {
         return NextResponse.json({ ok: true, distance: null });

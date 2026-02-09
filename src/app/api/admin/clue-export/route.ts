@@ -70,11 +70,18 @@ export async function POST(request: Request) {
 
   const { data: secretRows, error: secretError } = await supabase
     .from("clue_secrets")
-    .select("clue_id, password_ciphertext, radius_meters, lat, lng, requires_unlock");
+    .select("clue_id, password_ciphertext, radius_meters, lat, lng, requires_unlock, requires_artifact");
   if (secretError) {
     return NextResponse.json({ ok: false, reason: secretError.message }, { status: 400 });
   }
   secrets = secretRows ?? [];
+
+  const { data: tokenRows, error: tokenError } = await supabase
+    .from("artifact_tokens")
+    .select("clue_id, token_ciphertext");
+  if (tokenError) {
+    return NextResponse.json({ ok: false, reason: tokenError.message }, { status: 400 });
+  }
 
   const { data: hintRows, error: hintError } = await supabase
     .from("clue_hints")
@@ -86,6 +93,7 @@ export async function POST(request: Request) {
   hints = hintRows ?? [];
 
   const secretsMap = new Map(secrets.map((row) => [row.clue_id, row]));
+  const tokenMap = new Map((tokenRows ?? []).map((row) => [row.clue_id, row]));
   const hintsByClue = new Map<string, typeof hints>();
   hints.forEach((hint) => {
     const list = hintsByClue.get(hint.clue_id) ?? [];
@@ -99,6 +107,7 @@ export async function POST(request: Request) {
   clues.forEach((clue) => {
     const secret = secretsMap.get(clue.id);
     const requiresUnlock = secret?.requires_unlock !== false;
+    const requiresArtifact = secret?.requires_artifact !== false;
     let password = "[none]";
     if (requiresUnlock) {
       if (secret?.password_ciphertext) {
@@ -112,11 +121,27 @@ export async function POST(request: Request) {
       }
     }
 
+    let tokenValue = "";
+    const tokenRow = tokenMap.get(clue.id);
+    if (tokenRow?.token_ciphertext) {
+      try {
+        tokenValue = decryptSecret(tokenRow.token_ciphertext);
+      } catch {
+        tokenValue = "";
+      }
+    }
+    const qrUrl = tokenValue
+      ? `${origin}/experience?step=${clue.clue_index}&unlock=1&source=qr&token=${encodeURIComponent(
+          tokenValue
+        )}`
+      : `${origin}/experience?step=${clue.clue_index}&unlock=1&source=qr`;
+
     lines.push(`${clue.label || `Clue ${clue.clue_index}`}`);
     lines.push(`Title: ${clue.title}`);
     lines.push(`Reward: ${clue.reward}`);
     lines.push(`Final: ${clue.is_final ? "Yes" : "No"}`);
-    lines.push(`QR URL: ${origin}/experience?step=${clue.clue_index}&unlock=1&source=qr`);
+    lines.push(`QR required: ${requiresArtifact ? "Yes" : "No"}`);
+    lines.push(`QR URL: ${qrUrl}`);
     lines.push(`Lock required: ${requiresUnlock ? "Yes" : "No"}`);
     lines.push(`Password: ${password}`);
     lines.push(`Latitude: ${secret?.lat ?? "—"}`);

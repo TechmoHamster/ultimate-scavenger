@@ -15,6 +15,9 @@ type ClueDraft = Clue & {
   password?: string;
   has_password?: boolean;
   requires_unlock?: boolean;
+  requires_password?: boolean;
+  requires_gps?: boolean;
+  requires_artifact?: boolean;
   radius_meters?: number | null;
   lat?: number | null;
   lng?: number | null;
@@ -51,6 +54,7 @@ export default function GameDesignPanel({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [activeClueId, setActiveClueId] = useState<string | null>(null);
   const [quickActionsCollapsed, setQuickActionsCollapsed] = useState(true);
+  const [showUnlockWarnings, setShowUnlockWarnings] = useState(true);
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: mapsKey,
@@ -120,6 +124,19 @@ export default function GameDesignPanel({
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("psh_show_unlock_warnings");
+    if (stored !== null) {
+      setShowUnlockWarnings(stored === "true");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("psh_show_unlock_warnings", String(showUnlockWarnings));
+  }, [showUnlockWarnings]);
+
+  useEffect(() => {
     if (!isAdmin) return;
     const load = async () => {
       const supabase = createSupabaseBrowserClient();
@@ -169,7 +186,10 @@ export default function GameDesignPanel({
       reminder: clue.reminder ?? "",
       password: "",
       has_password: false,
-      requires_unlock: true,
+      requires_unlock: clue.requires_unlock ?? true,
+      requires_password: clue.requires_password ?? true,
+      requires_gps: clue.requires_gps ?? true,
+      requires_artifact: clue.requires_artifact ?? true,
       radius_meters: null,
       lat: null,
       lng: null,
@@ -194,7 +214,9 @@ export default function GameDesignPanel({
       const supabase = createSupabaseBrowserClient();
       const { data } = await supabase
         .from("clue_secrets")
-        .select("clue_id, radius_meters, lat, lng, password_hash, password, requires_unlock");
+        .select(
+          "clue_id, radius_meters, lat, lng, password_hash, password, requires_unlock, requires_password, requires_gps, requires_artifact"
+        );
       if (!data) return;
       const map = new Map(data.map((row) => [row.clue_id, row]));
       setDrafts((prev) =>
@@ -204,6 +226,11 @@ export default function GameDesignPanel({
           lat: map.get(clue.id)?.lat ?? clue.lat ?? null,
           lng: map.get(clue.id)?.lng ?? clue.lng ?? null,
           requires_unlock: map.get(clue.id)?.requires_unlock ?? clue.requires_unlock ?? true,
+          requires_password:
+            map.get(clue.id)?.requires_password ?? clue.requires_password ?? true,
+          requires_gps: map.get(clue.id)?.requires_gps ?? clue.requires_gps ?? true,
+          requires_artifact:
+            map.get(clue.id)?.requires_artifact ?? clue.requires_artifact ?? true,
           has_password: Boolean(map.get(clue.id)?.password_hash || map.get(clue.id)?.password),
         }))
       );
@@ -325,6 +352,9 @@ export default function GameDesignPanel({
     const secretPayload = {
       clueId,
       requires_unlock: clue.requires_unlock ?? true,
+      requires_password: clue.requires_password ?? true,
+      requires_gps: clue.requires_gps ?? true,
+      requires_artifact: clue.requires_artifact ?? true,
       radius_meters: clue.radius_meters ?? null,
       lat: clue.lat ?? null,
       lng: clue.lng ?? null,
@@ -373,6 +403,10 @@ export default function GameDesignPanel({
               radius_meters: clue.radius_meters ?? null,
               lat: clue.lat ?? null,
               lng: clue.lng ?? null,
+              requires_unlock: clue.requires_unlock ?? true,
+              requires_password: clue.requires_password ?? true,
+              requires_gps: clue.requires_gps ?? true,
+              requires_artifact: clue.requires_artifact ?? true,
               has_password: item.has_password || Boolean(trimmedPassword),
               password: "",
             }
@@ -428,17 +462,26 @@ export default function GameDesignPanel({
     notifyStatus(`Secured ${body.upgraded ?? 0} password(s).`);
   };
 
-  const downloadQrLinks = () => {
-    const origin =
-      typeof window !== "undefined" && window.location?.origin
-        ? window.location.origin
-        : "";
-    const lines = drafts.map((clue) => {
-      const label = clue.label || `Clue ${clue.clue_index}`;
-      const url = `${origin}/experience?step=${clue.clue_index}&unlock=1&source=qr`;
-      return `${label}: ${url}`;
+  const downloadQrLinks = async () => {
+    const supabase = createSupabaseBrowserClient();
+    const { data: session } = await supabase.auth.getSession();
+    const token = session?.session?.access_token;
+    if (!token) {
+      notifyStatus("Missing session token.");
+      return;
+    }
+    const response = await fetch("/api/admin/artifact-links", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     });
-    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      notifyStatus(body?.reason ?? "Unable to generate QR links.");
+      return;
+    }
+    const text = await response.text();
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -561,6 +604,10 @@ export default function GameDesignPanel({
           radius_meters: step.radiusMeters ?? null,
           lat: step.coords?.lat ?? null,
           lng: step.coords?.lng ?? null,
+          requires_unlock: true,
+          requires_password: true,
+          requires_gps: true,
+          requires_artifact: true,
         }),
       });
       if (!response.ok) {
@@ -584,6 +631,10 @@ export default function GameDesignPanel({
       clue.reward !== original.reward ||
       clue.hints_enabled !== original.hints_enabled ||
       (clue.hint_limit ?? clue.hints.length) !== (original.hint_limit ?? original.hints.length) ||
+      clue.requires_unlock !== original.requires_unlock ||
+      clue.requires_password !== original.requires_password ||
+      clue.requires_gps !== original.requires_gps ||
+      clue.requires_artifact !== original.requires_artifact ||
       clue.cooldown_enabled !== original.cooldown_enabled ||
       (clue.cooldown_minutes ?? 0) !== (original.cooldown_minutes ?? 0) ||
       clue.radius_meters !== original.radius_meters ||
@@ -734,6 +785,19 @@ export default function GameDesignPanel({
                 </span>
               </label>
             ))}
+            <label className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3">
+              <span>Warn when unlock requirements are off (admin only)</span>
+              <span className="relative inline-flex h-6 w-11 items-center">
+                <input
+                  type="checkbox"
+                  checked={showUnlockWarnings}
+                  onChange={(event) => setShowUnlockWarnings(event.target.checked)}
+                  className="peer h-0 w-0 opacity-0"
+                />
+                <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
+                <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
+              </span>
+            </label>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {[
@@ -791,7 +855,9 @@ export default function GameDesignPanel({
           <div className="glass-panel rounded-3xl p-6 md:p-8">
             <h2 className="text-display text-2xl">Quick reference</h2>
             <div className="mt-3 grid gap-3 text-sm text-[var(--text-muted)]">
-              <p>QR link format: `/experience?step=CLUE_INDEX&amp;unlock=1&amp;source=qr`</p>
+              <p>
+                QR link format: `/experience?step=CLUE_INDEX&amp;unlock=1&amp;source=qr&amp;token=TOKEN`
+              </p>
               <p>Passwords are hashed on save. Leave blank to keep existing.</p>
               <p>Export lock requirements uses the admin PIN and decrypts on the server only.</p>
               <p>Radius is in meters. Use 80–150 for most locations.</p>
@@ -897,7 +963,15 @@ export default function GameDesignPanel({
       </section>
 
       <section ref={cluesSectionRef} className="grid gap-6">
-        {drafts.map((clue, clueIndex) => (
+        {drafts.map((clue, clueIndex) => {
+          const lockEnabled = clue.requires_unlock !== false;
+          const gpsFieldEnabled = lockEnabled && (clue.requires_gps ?? true);
+          const passwordFieldEnabled = lockEnabled && (clue.requires_password ?? true);
+          const gpsRequired = gpsFieldEnabled && controlDraft.requireGps !== false;
+          const passwordRequired =
+            passwordFieldEnabled && controlDraft.requirePassword !== false;
+
+          return (
           <div key={clue.id} className="grid gap-3">
             <div
               id={`clue-${clue.clue_index}`}
@@ -933,15 +1007,37 @@ export default function GameDesignPanel({
                       Saved
                     </span>
                   )}
-                  {clue.requires_unlock !== false &&
-                    (!clue.radius_meters || !clue.lat || !clue.lng) && (
+                  {showUnlockWarnings && clue.requires_unlock === false && (
+                    <span className="rounded-full border border-[var(--accent-gold)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      Unlock off
+                    </span>
+                  )}
+                  {showUnlockWarnings && controlDraft.requireGps === false && (
+                    <span className="rounded-full border border-[var(--accent-gold)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      GPS off
+                    </span>
+                  )}
+                  {showUnlockWarnings && clue.requires_gps === false && (
+                    <span className="rounded-full border border-[var(--accent-gold)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      GPS off (clue)
+                    </span>
+                  )}
+                  {showUnlockWarnings && controlDraft.requirePassword === false && (
+                    <span className="rounded-full border border-[var(--accent-gold)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      Password off
+                    </span>
+                  )}
+                  {showUnlockWarnings && clue.requires_password === false && (
+                    <span className="rounded-full border border-[var(--accent-gold)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      Password off (clue)
+                    </span>
+                  )}
+                  {gpsRequired && (!clue.radius_meters || !clue.lat || !clue.lng) && (
                     <span className="rounded-full border border-[var(--accent-coral)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-coral)]">
                       Missing GPS
                     </span>
                   )}
-                  {clue.requires_unlock !== false &&
-                    !clue.has_password &&
-                    !clue.password?.trim() && (
+                  {passwordRequired && !clue.has_password && !clue.password?.trim() && (
                     <span className="rounded-full border border-[var(--accent-coral)]/50 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--accent-coral)]">
                       Missing password
                     </span>
@@ -1097,36 +1193,114 @@ export default function GameDesignPanel({
                   Unlock requirements
                 </p>
                 <div className="mt-3 grid gap-4">
-                  <label className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-                    <span>Require lock for this clue</span>
-                    <span className="relative inline-flex h-6 w-11 items-center">
-                      <input
-                        type="checkbox"
-                        checked={clue.requires_unlock !== false}
-                        onChange={(event) =>
-                          updateClue(clueIndex, "requires_unlock", event.target.checked)
-                        }
-                        className="peer h-0 w-0 opacity-0"
-                      />
-                      <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
-                      <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
-                    </span>
-                  </label>
-                  <label className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-                    <span>Enable cooldown for this clue</span>
-                    <span className="relative inline-flex h-6 w-11 items-center">
-                      <input
-                        type="checkbox"
-                        checked={clue.cooldown_enabled ?? false}
-                        onChange={(event) =>
-                          updateClue(clueIndex, "cooldown_enabled", event.target.checked)
-                        }
-                        className="peer h-0 w-0 opacity-0"
-                      />
-                      <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
-                      <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
-                    </span>
-                  </label>
+                  <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                      Per-clue locks
+                    </p>
+                    <div className="mt-3 grid gap-3">
+                      <label className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
+                        <span>Require lock for this clue</span>
+                        <span className="relative inline-flex h-6 w-11 items-center">
+                          <input
+                            type="checkbox"
+                            checked={clue.requires_unlock !== false}
+                            onChange={(event) =>
+                              updateClue(clueIndex, "requires_unlock", event.target.checked)
+                            }
+                            className="peer h-0 w-0 opacity-0"
+                          />
+                          <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
+                          <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
+                        </span>
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {[
+                          {
+                            key: "requires_password",
+                            label: "Require password",
+                            checked: clue.requires_password ?? true,
+                          },
+                          {
+                            key: "requires_gps",
+                            label: "Require GPS",
+                            checked: clue.requires_gps ?? true,
+                          },
+                          {
+                            key: "requires_artifact",
+                            label: "Require QR scan",
+                            checked: clue.requires_artifact ?? true,
+                          },
+                          {
+                            key: "cooldown_enabled",
+                            label: "Enable cooldown",
+                            checked: clue.cooldown_enabled ?? false,
+                          },
+                        ].map((toggle) => (
+                          <label
+                            key={toggle.key}
+                            className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]"
+                          >
+                            <span>{toggle.label}</span>
+                            <span className="relative inline-flex h-6 w-11 items-center">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(toggle.checked)}
+                                disabled={clue.requires_unlock === false}
+                                onChange={(event) =>
+                                  updateClue(
+                                    clueIndex,
+                                    toggle.key as keyof typeof clue,
+                                    event.target.checked
+                                  )
+                                }
+                                className="peer h-0 w-0 opacity-0"
+                              />
+                              <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
+                              <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                      Global overrides
+                    </p>
+                    <p className="mt-2 text-xs text-[var(--text-muted)]">
+                      These apply across the entire hunt.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {[
+                        { key: "requirePassword", label: "Require password (global)" },
+                        { key: "requireGps", label: "Require GPS (global)" },
+                      ].map((item) => (
+                        <label
+                          key={item.key}
+                          className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]"
+                        >
+                          <span>{item.label}</span>
+                          <span className="relative inline-flex h-6 w-11 items-center">
+                            <input
+                              type="checkbox"
+                              checked={controlDraft[item.key as keyof typeof controlDefaults] as boolean}
+                              onChange={(event) =>
+                                updateControl(
+                                  item.key as keyof typeof controlDefaults,
+                                  event.target.checked
+                                )
+                              }
+                              className="peer h-0 w-0 opacity-0"
+                            />
+                            <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
+                            <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <label className="grid content-start gap-2 text-sm">
                     <span className="text-[var(--text-muted)]">Cooldown (minutes)</span>
                     <input
@@ -1145,43 +1319,71 @@ export default function GameDesignPanel({
                       className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                     />
                   </label>
-                  <label className="grid content-start gap-2 text-sm">
-                    <span className="text-[var(--text-muted)]">Clue password</span>
-                    <input
-                      value={clue.password ?? ""}
-                      disabled={clue.requires_unlock === false}
-                      onChange={(event) => updateClue(clueIndex, "password", event.target.value)}
-                      className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
-                      placeholder="Enter a new password to replace"
-                    />
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid content-start gap-2 text-sm">
-                      <span className="text-[var(--text-muted)]">Latitude</span>
+
+                  <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                      Password
+                    </p>
+                    <label className="mt-3 grid content-start gap-2 text-sm">
+                      <span className="text-[var(--text-muted)]">Clue password</span>
                       <input
-                        type="number"
-                        value={clue.lat ?? ""}
-                        disabled={clue.requires_unlock === false}
-                        onChange={(event) =>
-                          updateClue(
-                            clueIndex,
-                            "lat",
-                            event.target.value === "" ? null : Number(event.target.value)
-                          )
-                        }
+                        value={clue.password ?? ""}
+                        disabled={!passwordFieldEnabled}
+                        onChange={(event) => updateClue(clueIndex, "password", event.target.value)}
                         className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                        placeholder="Enter a new password to replace"
                       />
                     </label>
-                    <label className="grid content-start gap-2 text-sm">
-                      <span className="text-[var(--text-muted)]">Longitude</span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                      GPS verification
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="grid content-start gap-2 text-sm">
+                        <span className="text-[var(--text-muted)]">Latitude</span>
+                        <input
+                          type="number"
+                          value={clue.lat ?? ""}
+                          disabled={!gpsFieldEnabled}
+                          onChange={(event) =>
+                            updateClue(
+                              clueIndex,
+                              "lat",
+                              event.target.value === "" ? null : Number(event.target.value)
+                            )
+                          }
+                          className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                        />
+                      </label>
+                      <label className="grid content-start gap-2 text-sm">
+                        <span className="text-[var(--text-muted)]">Longitude</span>
+                        <input
+                          type="number"
+                          value={clue.lng ?? ""}
+                          disabled={!gpsFieldEnabled}
+                          onChange={(event) =>
+                            updateClue(
+                              clueIndex,
+                              "lng",
+                              event.target.value === "" ? null : Number(event.target.value)
+                            )
+                          }
+                          className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-3 grid content-start gap-2 text-sm">
+                      <span className="text-[var(--text-muted)]">GPS radius (meters)</span>
                       <input
                         type="number"
-                        value={clue.lng ?? ""}
-                        disabled={clue.requires_unlock === false}
+                        value={clue.radius_meters ?? ""}
+                        disabled={!gpsFieldEnabled}
                         onChange={(event) =>
                           updateClue(
                             clueIndex,
-                            "lng",
+                            "radius_meters",
                             event.target.value === "" ? null : Number(event.target.value)
                           )
                         }
@@ -1189,22 +1391,6 @@ export default function GameDesignPanel({
                       />
                     </label>
                   </div>
-                  <label className="grid content-start gap-2 text-sm">
-                    <span className="text-[var(--text-muted)]">GPS radius (meters)</span>
-                    <input
-                      type="number"
-                      value={clue.radius_meters ?? ""}
-                      disabled={clue.requires_unlock === false}
-                      onChange={(event) =>
-                        updateClue(
-                          clueIndex,
-                          "radius_meters",
-                          event.target.value === "" ? null : Number(event.target.value)
-                        )
-                      }
-                      className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
-                    />
-                  </label>
                 </div>
               </div>
               <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4 text-sm text-[var(--text-muted)]">
@@ -1301,7 +1487,8 @@ export default function GameDesignPanel({
               ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </section>
     </motion.div>
   );

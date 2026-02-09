@@ -22,6 +22,9 @@ export type Clue = {
   is_final: boolean;
   hints: ClueHint[];
   requires_unlock?: boolean;
+  requires_password?: boolean;
+  requires_gps?: boolean;
+  requires_artifact?: boolean;
   hints_enabled?: boolean;
   hint_limit?: number | null;
   cooldown_enabled?: boolean;
@@ -47,6 +50,9 @@ export const toDefaultClues = (): Clue[] =>
     hints_enabled: true,
     hint_limit: step.hints.length,
     requires_unlock: true,
+    requires_password: true,
+    requires_gps: true,
+    requires_artifact: true,
     cooldown_enabled: false,
     cooldown_minutes: 0,
   }));

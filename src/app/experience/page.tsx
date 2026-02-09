@@ -48,6 +48,11 @@ function ExperienceContent() {
   const [celebrationMessage, setCelebrationMessage] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
+  const [cooldownNotified, setCooldownNotified] = useState(false);
+  const [artifactClaimStatus, setArtifactClaimStatus] = useState<
+    "idle" | "pending" | "claimed" | "error"
+  >("idle");
+  const [artifactNote, setArtifactNote] = useState<string | null>(null);
 
   const { clues } = useClues();
   const progress = usePlayerProgress(user);
@@ -206,6 +211,18 @@ function ExperienceContent() {
     () => trackerClues.find((clue) => clue.clue_index === effectiveProgressStep),
     [trackerClues, effectiveProgressStep]
   );
+  const lockEnabled = step ? step.requires_unlock !== false : false;
+  const perCluePasswordEnabled = lockEnabled && (step?.requires_password ?? true);
+  const perClueGpsEnabled = lockEnabled && (step?.requires_gps ?? true);
+  const effectivePassword = perCluePasswordEnabled && requirePassword;
+  const effectiveGps = perClueGpsEnabled && requireGps;
+  const artifactRequired = lockEnabled && (step?.requires_artifact ?? true);
+  const isStaffBypass = demoMode || (isAdmin && !playerView);
+  const artifactClaimed =
+    !artifactRequired ||
+    isStaffBypass ||
+    Boolean(progress.state?.artifactClaims?.includes(stepId));
+  const artifactGateLocked = artifactRequired && !artifactClaimed;
   const cooldownEnabled = Boolean(progressClue?.cooldown_enabled);
   const cooldownMinutes = Math.max(0, progressClue?.cooldown_minutes ?? 0);
   const previousCompletionAt =
@@ -219,21 +236,128 @@ function ExperienceContent() {
   }, [cooldownEnabled, cooldownMinutes, previousCompletionAt]);
   const progressCooldownActive = cooldownRemainingMs > 0;
   const cooldownActive = progressCooldownActive && stepId === effectiveProgressStep;
+  const cooldownLockActive = cooldownActive && !isStaffBypass;
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
   const requiresUnlock = step
     ? step.clue_index !== 0 &&
-      step.requires_unlock !== false &&
-      (requirePassword || requireGps)
+      lockEnabled &&
+      (effectivePassword || effectiveGps || artifactRequired)
     : false;
   const hintLimit = step?.hint_limit ?? step?.hints?.length ?? 0;
   const hintsEnabled =
-    globalHintsEnabled && (step?.hints_enabled ?? true) && hintLimit > 0;
+    !cooldownLockActive &&
+    globalHintsEnabled &&
+    (step?.hints_enabled ?? true) &&
+    hintLimit > 0;
   const visibleHints = hintsEnabled ? (step?.hints ?? []).slice(0, hintLimit) : [];
   const previousCompletedId = completedIds.length
     ? Math.max(...completedIds.filter((id) => id < stepId), -1)
     : -1;
   const allowBackNavigation = demoMode || allowReplay || previousCompletedId >= 0;
+  const showCooldownOnly = cooldownLockActive && !isCompleted;
+  const experienceGridCols = showCooldownOnly
+    ? "lg:grid-cols-1"
+    : "lg:grid-cols-[1.1fr_0.9fr]";
+  const unlockCopy = useMemo(() => {
+    if (effectivePassword && effectiveGps) {
+      return "Once you reach the location, enter the password and verify your GPS.";
+    }
+    if (effectivePassword) {
+      return "Enter the password to continue.";
+    }
+    if (effectiveGps) {
+      return "Verify your GPS to continue.";
+    }
+    if (artifactRequired) {
+      return "Scan the envelope QR to unlock this clue.";
+    }
+    return "This clue can be unlocked now.";
+  }, [effectivePassword, effectiveGps, artifactRequired]);
+
+  useEffect(() => {
+    setArtifactNote(null);
+    setArtifactClaimStatus("idle");
+  }, [stepId]);
+
+  useEffect(() => {
+    if (!user || !step) return;
+    const tokenParam = searchParams.get("token");
+    if (!tokenParam) return;
+    if (!artifactRequired) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("token");
+      router.replace(`/experience?${params.toString()}`, { scroll: false });
+      return;
+    }
+    if (isStaffBypass) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("token");
+      router.replace(`/experience?${params.toString()}`, { scroll: false });
+      setArtifactClaimStatus("claimed");
+      setArtifactNote("QR validation skipped for staff.");
+      return;
+    }
+    if (artifactClaimed) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("token");
+      router.replace(`/experience?${params.toString()}`, { scroll: false });
+      return;
+    }
+
+    let active = true;
+    const claim = async () => {
+      setArtifactClaimStatus("pending");
+      setArtifactNote(null);
+      const supabase = createSupabaseBrowserClient();
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+      if (!token) {
+        if (!active) return;
+        setArtifactClaimStatus("error");
+        setArtifactNote("Please sign in again to validate the QR.");
+        return;
+      }
+
+      const response = await fetch("/api/artifact/claim", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ clueIndex: step.clue_index, token: tokenParam }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!active) return;
+      if (!response.ok || !body.ok) {
+        setArtifactClaimStatus("error");
+        setArtifactNote(body?.reason ?? "Unable to validate QR token.");
+        return;
+      }
+      setArtifactClaimStatus("claimed");
+      setArtifactNote(
+        body?.skipped ? "QR validation skipped for this clue." : "Envelope verified. You can unlock this clue now."
+      );
+      progress.refresh();
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("token");
+      router.replace(`/experience?${params.toString()}`, { scroll: false });
+    };
+
+    claim();
+    return () => {
+      active = false;
+    };
+  }, [
+    user,
+    step,
+    searchParams,
+    artifactRequired,
+    artifactClaimed,
+    isStaffBypass,
+    router,
+    progress,
+  ]);
 
   useEffect(() => {
     if (!cooldownEndsAt) {
@@ -248,6 +372,56 @@ function ExperienceContent() {
     const interval = window.setInterval(updateRemaining, 1000);
     return () => window.clearInterval(interval);
   }, [cooldownEndsAt]);
+
+  useEffect(() => {
+    setCooldownNotified(false);
+  }, [cooldownEndsAt, effectiveProgressStep]);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+    if (isStaffBypass) return;
+    if (!cooldownEndsAt) return;
+    if (cooldownRemainingMs > 0) return;
+    if (cooldownNotified) return;
+    if (stepId !== effectiveProgressStep) return;
+
+    let active = true;
+    const notify = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: session } = await supabase.auth.getSession();
+        const token = session?.session?.access_token;
+        if (!token) return;
+        await fetch("/api/notifications/cooldown", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ clueIndex: effectiveProgressStep }),
+        });
+        if (!active) return;
+        setCooldownNotified(true);
+      } catch {
+        if (!active) return;
+        setCooldownNotified(true);
+      }
+    };
+
+    notify();
+    return () => {
+      active = false;
+    };
+  }, [
+    user,
+    profile,
+    isStaffBypass,
+    cooldownEndsAt,
+    cooldownRemainingMs,
+    cooldownNotified,
+    stepId,
+    effectiveProgressStep,
+  ]);
 
   const handleLocationCheck = () => {
     setGeoStatus("pending");
@@ -274,10 +448,14 @@ function ExperienceContent() {
 
   const handleCompleteStep = async () => {
     if (!state) return;
-    if (cooldownActive) {
+    if (cooldownLockActive) {
       setStatusNote(
         `This clue unlocks in ${formatCooldown(cooldownRemainingMs)}.`
       );
+      return;
+    }
+    if (artifactGateLocked) {
+      setStatusNote("Find and scan the envelope QR code to continue.");
       return;
     }
 
@@ -292,9 +470,9 @@ function ExperienceContent() {
 
       const payload = {
         clueIndex: step.clue_index,
-        password: requirePassword ? password : "",
-        coords: requireGps ? coords ?? (demoMode && DEMO_GEO_OVERRIDE ? DEMO_COORDS : null) : null,
-        allowMissingGeo: !requireGps || (demoMode && !DEMO_GEO_OVERRIDE),
+        password: effectivePassword ? password : "",
+        coords: effectiveGps ? coords ?? (demoMode && DEMO_GEO_OVERRIDE ? DEMO_COORDS : null) : null,
+        allowMissingGeo: !effectiveGps || (demoMode && !DEMO_GEO_OVERRIDE),
       };
 
       const response = await fetch("/api/validate-clue", {
@@ -318,6 +496,14 @@ function ExperienceContent() {
             ? "Password incorrect. Check the name of the location and try again."
             : result?.reason === "Out of range"
             ? "You are outside the GPS radius. Move closer and retry."
+            : result?.reason === "Missing QR"
+            ? "Find and scan the envelope QR code to continue."
+            : result?.reason === "Cooldown active"
+            ? `This clue unlocks in ${formatCooldown(
+                typeof result?.remainingMs === "number"
+                  ? result.remainingMs
+                  : cooldownRemainingMs
+              )}.`
             : "Unable to unlock this clue."
         );
         return;
@@ -480,7 +666,7 @@ function ExperienceContent() {
           </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={`grid gap-6 ${experienceGridCols}`}>
           {!loading && user && !profile?.full_name && !state?.name && (
             <div className="glass-panel rounded-3xl p-6 md:p-8 lg:col-span-2">
               <p className="text-sm text-[var(--text-muted)]">
@@ -501,315 +687,372 @@ function ExperienceContent() {
                 {step?.label ?? "Clue"}
               </span>
             </div>
-            <p className="mt-4 text-lg italic text-[var(--text-muted)] text-center md:text-xl">
-              {step?.clue ?? "Loading clue..."}
-            </p>
-            {step?.reminder && (
-              <p className="mt-4 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-                {step.reminder}
-              </p>
-            )}
-            {stepId === 0 && (
-              <p className="mt-4 text-center text-sm text-[var(--text-muted)]">
-                Read the intro letter, then confirm to begin the hunt.
-              </p>
-            )}
-            {isCompleted && (
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                <span className="rounded-full border border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]">
-                  Clue solved
-                </span>
-                {allowBackNavigation && previousCompletedId >= 0 && (
-                  <button
-                    onClick={() =>
-                      router.push(`/experience?step=${previousCompletedId}&review=1`)
-                    }
-                    className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
-                  >
-                    Previous clue
-                  </button>
-                )}
-                {!step?.is_final && (
-                  <button
-                    onClick={() => router.push(`/experience?step=${nextStepId}`)}
-                    className="rounded-full bg-[var(--accent-gold)] px-6 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-black"
-                  >
-                    Continue
-                  </button>
-                )}
+            {showCooldownOnly ? (
+              <div className="mt-6 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-5 text-center text-sm text-[var(--accent-gold)]">
+                <p className="text-xs uppercase tracking-[0.3em]">Cooldown active</p>
+                <p className="mt-3 text-lg font-semibold text-white">
+                  This clue unlocks in {formatCooldown(cooldownRemainingMs)}.
+                </p>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  We&apos;ll email you as soon as this clue is ready.
+                </p>
               </div>
-            )}
-
-            {requiresUnlock && !isCompleted && (
-              <div className="mt-8 rounded-3xl border border-[var(--stroke)] bg-black/40 p-4 md:p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                      Unlock the next clue
-                    </p>
-                    <p className="mt-2 text-sm text-[var(--text-muted)]">
-                      Once you reach the location, enter the password and verify your GPS.
-                    </p>
+            ) : (
+              <>
+                <p className="mt-4 text-lg italic text-[var(--text-muted)] text-center md:text-xl">
+                  {step?.clue ?? "Loading clue..."}
+                </p>
+                {step?.reminder && (
+                  <p className="mt-4 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
+                    {step.reminder}
+                  </p>
+                )}
+                {artifactGateLocked && (
+                  <p className="mt-4 text-center text-sm text-[var(--accent-gold)]">
+                    Scan the envelope QR to unlock this clue.
+                  </p>
+                )}
+                {stepId === 0 && (
+                  <p className="mt-4 text-center text-sm text-[var(--text-muted)]">
+                    Read the intro letter, then confirm to begin the hunt.
+                  </p>
+                )}
+                {isCompleted && (
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                    <span className="rounded-full border border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]">
+                      Clue solved
+                    </span>
+                    {allowBackNavigation && previousCompletedId >= 0 && (
+                      <button
+                        onClick={() =>
+                          router.push(`/experience?step=${previousCompletedId}&review=1`)
+                        }
+                        className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                      >
+                        Previous clue
+                      </button>
+                    )}
+                    {!step?.is_final && (
+                      <button
+                        onClick={() => router.push(`/experience?step=${nextStepId}`)}
+                        className="rounded-full bg-[var(--accent-gold)] px-6 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                      >
+                        Continue
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => setShowUnlock((prev) => !prev)}
-                    className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
-                  >
-                      {showUnlock ? "Hide unlock" : "Unlock clue"}
-                  </button>
-                </div>
-                {showUnlock && (
-                  <div>
-                    {cooldownActive && (
-                      <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-3 text-sm text-[var(--accent-gold)]">
-                        This clue unlocks in {formatCooldown(cooldownRemainingMs)}.
+                )}
+
+                {requiresUnlock && !isCompleted && (
+                  <div className="mt-8 rounded-3xl border border-[var(--stroke)] bg-black/40 p-4 md:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                          Unlock the next clue
+                        </p>
+                        <p className="mt-2 text-sm text-[var(--text-muted)]">
+                          {unlockCopy}
+                        </p>
+                        {artifactRequired && (
+                          <span
+                            className={`mt-3 inline-flex items-center rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.3em] ${
+                              artifactClaimed
+                                ? "border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 text-[var(--accent-emerald)]"
+                                : "border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 text-[var(--accent-gold)]"
+                            }`}
+                          >
+                            {artifactClaimed ? "QR verified" : "QR required"}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setShowUnlock((prev) => !prev)}
+                        className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                      >
+                        {showUnlock ? "Hide unlock" : "Unlock clue"}
+                      </button>
+                    </div>
+                    {showUnlock && (
+                      <div>
+                        {artifactGateLocked && (
+                          <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-3 text-sm text-[var(--accent-gold)]">
+                            Scan the envelope QR to unlock this clue.
+                          </div>
+                        )}
+                        <div className="mt-5 grid gap-4">
+                          {effectivePassword && (
+                            <label className="grid gap-2 text-sm">
+                              <span className="text-[var(--text-muted)]">Password</span>
+                              <input
+                                value={password}
+                                onChange={(event) => setPassword(event.target.value)}
+                                disabled={cooldownLockActive || artifactGateLocked}
+                                className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                                placeholder="Enter the location name"
+                              />
+                            </label>
+                          )}
+                          {effectiveGps && (
+                            <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 min-w-0 self-start">
+                              <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                                GPS Verification
+                              </p>
+                              <p className="mt-2 text-sm text-white">
+                                {formatDistance(distance, geoStatus === "ready")}
+                              </p>
+                              {(demoUi || showDemoHelper) && (
+                                <p className="mt-1 text-xs text-[var(--accent-emerald)]">
+                                  {DEMO_GEO_OVERRIDE
+                                    ? "Demo mode uses test coordinates for geo verification."
+                                    : "Demo mode skips geo verification."}
+                                </p>
+                              )}
+                              <div className="mt-4 flex flex-wrap gap-3">
+                                <button
+                                  onClick={handleLocationCheck}
+                                  disabled={cooldownLockActive || artifactGateLocked}
+                                  className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
+                                >
+                                  {geoStatus === "pending" ? "Checking..." : "Check location"}
+                                </button>
+                                {geoStatus === "ready" && (
+                                  <span
+                                    className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.2em] ${
+                                      distance !== null
+                                        ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
+                                        : "bg-[var(--stroke)]/20 text-[var(--text-muted)]"
+                                    }`}
+                                  >
+                                    {distance !== null ? "Checked" : "Ready"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={handleCompleteStep}
+                          disabled={cooldownLockActive || artifactGateLocked}
+                          className="mt-4 w-full rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                        >
+                          Unlock clue
+                        </button>
                       </div>
                     )}
-                    <div className="mt-5 grid gap-4">
-                      {requirePassword && (
-                        <label className="grid gap-2 text-sm">
-                          <span className="text-[var(--text-muted)]">Password</span>
-                          <input
-                            value={password}
-                            onChange={(event) => setPassword(event.target.value)}
-                            disabled={cooldownActive}
-                            className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
-                            placeholder="Enter the location name"
-                          />
-                        </label>
-                      )}
-                      {requireGps && (
-                        <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 min-w-0 self-start">
-                          <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                            GPS Verification
-                          </p>
-                          <p className="mt-2 text-sm text-white">
-                            {formatDistance(distance, geoStatus === "ready")}
-                          </p>
-                          {(demoUi || showDemoHelper) && (
-                            <p className="mt-1 text-xs text-[var(--accent-emerald)]">
-                              {DEMO_GEO_OVERRIDE
-                                ? "Demo mode uses test coordinates for geo verification."
-                                : "Demo mode skips geo verification."}
-                            </p>
-                          )}
-                          <div className="mt-4 flex flex-wrap gap-3">
-                            <button
-                              onClick={handleLocationCheck}
-                              disabled={cooldownActive}
-                              className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
-                            >
-                              {geoStatus === "pending" ? "Checking..." : "Check location"}
-                            </button>
-                            {geoStatus === "ready" && (
-                              <span
-                                className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.2em] ${
-                                  distance !== null
-                                    ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
-                                    : "bg-[var(--stroke)]/20 text-[var(--text-muted)]"
-                                }`}
-                              >
-                                {distance !== null ? "Checked" : "Ready"}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={handleCompleteStep}
-                      disabled={cooldownActive}
-                      className="mt-4 w-full rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
-                    >
-                      Unlock clue
-                    </button>
                   </div>
                 )}
-              </div>
-            )}
 
-            {statusNote && (
+                {statusNote && (
+                  <p className="mt-4 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
+                    {statusNote}
+                  </p>
+                )}
+              </>
+            )}
+            {!showCooldownOnly && artifactClaimStatus === "pending" && (
               <p className="mt-4 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
-                {statusNote}
+                Validating QR code...
               </p>
             )}
-            {celebrationMessage && (
+            {!showCooldownOnly && artifactNote && (
+              <p className="mt-4 rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]">
+                {artifactNote}
+              </p>
+            )}
+            {!showCooldownOnly && celebrationMessage && (
               <div className="mt-4 rounded-2xl border border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 px-4 py-3 text-center text-sm uppercase tracking-[0.3em] text-[var(--accent-emerald)]">
                 {celebrationMessage}
               </div>
             )}
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              {allowBackNavigation && !isCompleted && previousCompletedId >= 0 && (
-                <button
-                  onClick={() => router.push(`/experience?step=${previousCompletedId}&review=1`)}
-                  className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
-                >
-                  Previous clue
-                </button>
-              )}
-              {!requiresUnlock && !isCompleted && (
-                <button
-                  onClick={handleCompleteStep}
-                  disabled={cooldownActive}
-                  className="glow-ring mx-auto w-full max-w-xs rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
-                >
-                  {cooldownActive
-                    ? `Unlocks in ${formatCooldown(cooldownRemainingMs)}`
-                    : "Mark clue complete"}
-                </button>
-              )}
-              {step?.is_final && isCompleted && (
-                <a
-                  href={mapLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full border border-[var(--accent-gold)] px-6 py-3 text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]"
-                >
-                  Go to your final destination
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-6 min-w-0">
-            <div className="glass-panel-strong rounded-3xl p-6 md:p-8">
-              <h3 className="text-display text-xl">Hints</h3>
-              <p className="mt-2 text-sm text-[var(--text-muted)]">
-                {hintsEnabled
-                  ? "Spend credits to reveal extra guidance. Purchased hints stay visible."
-                  : "Hints are disabled for this clue."}
-              </p>
-              <div className="mt-5 grid gap-4">
-                {visibleHints.map((hint, index) => {
-                  const hintOrder = index + 1;
-                  const isUnlocked = purchasedHints.includes(String(hintOrder)) || hint.cost === 0;
-                  return (
-                    <div
-                      key={hint.id}
-                      className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                          Hint {index + 1}
-                        </p>
-                        <span className="text-xs text-[var(--accent-gold)]">{hint.cost} credits</span>
-                      </div>
-                      <p className="mt-3 text-sm text-white">
-                        {isUnlocked ? hint.text : "Hint locked. Purchase to reveal."}
-                      </p>
-                      {!isUnlocked && (
-                        <button
-                          onClick={() => handleBuyHint(hint.id, hintOrder, hint.cost)}
-                          className="mt-3 rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
-                        >
-                          Buy hint
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="glass-panel rounded-3xl p-6 md:p-8">
-              <h3 className="text-display text-xl">Progress Tracker</h3>
-              <div className="mt-3 flex items-center gap-3">
-                <span className="rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                  {step?.label ?? "Clue"}
-                </span>
-                <p className="text-sm text-white">{step?.title ?? "Clue"}</p>
-              </div>
-              <div className="mt-5 flex flex-col gap-4">
-                <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4">
-                  <div className="flex w-full items-start gap-3 overflow-x-auto pb-2">
-                    {trackerClues.map((card, index) => {
-                      const completed = completedIds.includes(card.clue_index);
-                      const isCurrentProgress = card.clue_index === effectiveProgressStep;
-                      const isCurrentView = card.clue_index === stepId;
-                      const isFinal = card.is_final;
-                      const isAccessible =
-                        demoMode ||
-                        card.clue_index === effectiveProgressStep ||
-                        completed ||
-                        (allowReplay && card.clue_index < effectiveProgressStep);
-                      const isLocked = !demoMode && !isAccessible;
-                      const showUnlock =
-                        isCurrentProgress && !completed && !progressCooldownActive;
-                      return (
-                        <div key={card.id} className="flex items-center gap-3">
-                          <button
-                            onClick={() => {
-                              if (!isAccessible) return;
-                              const isReview =
-                                card.clue_index < effectiveProgressStep && !demoMode && !allowReplay;
-                              const reviewSuffix = isReview ? "&review=1" : "";
-                              router.push(`/experience?step=${card.clue_index}${reviewSuffix}`);
-                            }}
-                            className={`flex min-w-[72px] flex-col items-center gap-2 ${
-                              isLocked ? "pointer-events-none opacity-50" : ""
-                            }`}
-                            aria-disabled={isLocked}
-                          >
-                            <div
-                              className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm ${
-                                completed
-                                  ? "border-[var(--accent-emerald)] bg-[var(--accent-emerald)]/15 text-[var(--accent-emerald)]"
-                                  : showUnlock
-                                  ? "border-[var(--accent-gold)] bg-[var(--accent-gold)]/10 text-[var(--accent-gold)]"
-                                  : "border-[var(--stroke)] text-[var(--text-muted)]"
-                              }`}
-                            >
-                              {completed ? "✓" : showUnlock ? "🔓" : "🔒"}
-                            </div>
-                            <span className="flex min-h-[32px] flex-col items-center justify-start text-[10px] uppercase tracking-[0.3em]">
-                              <span
-                                className={`${
-                                  isCurrentProgress || isCurrentView
-                                    ? "text-[var(--accent-gold)]"
-                                    : "text-[var(--text-muted)]"
-                                }`}
-                              >
-                                {isFinal ? "Final" : card.label}
-                              </span>
-                              <span className="text-[var(--text-muted)]">{isFinal ? "Clue" : ""}</span>
-                            </span>
-                          </button>
-                          {index < trackerClues.length - 1 && (
-                            <div
-                              className={`h-[2px] w-10 ${
-                                card.clue_index < effectiveProgressStep
-                                  ? "bg-[var(--accent-emerald)]"
-                                  : "bg-[var(--stroke)]"
-                              }`}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                {(demoUi || showDemoHelper) && (
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Tap any circle to jump between clues.
-                  </p>
+            {!showCooldownOnly && (
+              <div className="mt-6 flex flex-wrap gap-3">
+                {allowBackNavigation && !isCompleted && previousCompletedId >= 0 && (
+                  <button
+                    onClick={() => router.push(`/experience?step=${previousCompletedId}&review=1`)}
+                    className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                  >
+                    Previous clue
+                  </button>
+                )}
+                {!requiresUnlock && !isCompleted && (
+                  <button
+                    onClick={handleCompleteStep}
+                    disabled={cooldownLockActive}
+                    className="glow-ring mx-auto w-full max-w-xs rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                  >
+                    {cooldownLockActive
+                      ? `Unlocks in ${formatCooldown(cooldownRemainingMs)}`
+                      : "Mark clue complete"}
+                  </button>
+                )}
+                {step?.is_final && isCompleted && (
+                  <a
+                    href={mapLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-[var(--accent-gold)] px-6 py-3 text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]"
+                  >
+                    Go to your final destination
+                  </a>
                 )}
               </div>
-              {(demoUi || showDemoHelper) && (
-                <>
-                  <p className="mt-4 text-xs text-[var(--text-muted)]">
-                    Need to restart? Use the account screen to reset progress.
-                  </p>
-                  <button
-                    onClick={() => router.push("/account")}
-                    className="mt-3 rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
-                  >
-                    Go to account screen
-                  </button>
-                </>
-              )}
-            </div>
+            )}
           </div>
+
+          {!showCooldownOnly && (
+            <div className="flex flex-col gap-6 min-w-0">
+              <div className="glass-panel-strong rounded-3xl p-6 md:p-8">
+                <h3 className="text-display text-xl">Hints</h3>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">
+                  {hintsEnabled
+                    ? "Spend credits to reveal extra guidance. Purchased hints stay visible."
+                    : "Hints are disabled for this clue."}
+                </p>
+                <div className="mt-5 grid gap-4">
+                  {visibleHints.map((hint, index) => {
+                    const hintOrder = index + 1;
+                    const isUnlocked = purchasedHints.includes(String(hintOrder)) || hint.cost === 0;
+                    return (
+                      <div
+                        key={hint.id}
+                        className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                            Hint {index + 1}
+                          </p>
+                          <span className="text-xs text-[var(--accent-gold)]">{hint.cost} credits</span>
+                        </div>
+                        <p className="mt-3 text-sm text-white">
+                          {isUnlocked ? hint.text : "Hint locked. Purchase to reveal."}
+                        </p>
+                        {!isUnlocked && (
+                          <button
+                            onClick={() => handleBuyHint(hint.id, hintOrder, hint.cost)}
+                            className="mt-3 rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
+                          >
+                            Buy hint
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="glass-panel rounded-3xl p-6 md:p-8">
+                <h3 className="text-display text-xl">Progress Tracker</h3>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                    {step?.label ?? "Clue"}
+                  </span>
+                  <p className="text-sm text-white">{step?.title ?? "Clue"}</p>
+                </div>
+                {artifactRequired && (
+                  <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.3em]">
+                    <span
+                      className={`rounded-full border px-3 py-1 ${
+                        artifactClaimed
+                          ? "border-[var(--accent-emerald)]/40 bg-[var(--accent-emerald)]/10 text-[var(--accent-emerald)]"
+                          : "border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 text-[var(--accent-gold)]"
+                      }`}
+                    >
+                      {artifactClaimed ? "QR verified" : "QR required"}
+                    </span>
+                  </div>
+                )}
+                <div className="mt-5 flex flex-col gap-4">
+                  <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4">
+                    <div className="flex w-full items-start gap-3 overflow-x-auto pb-2">
+                      {trackerClues.map((card, index) => {
+                        const completed = completedIds.includes(card.clue_index);
+                        const isCurrentProgress = card.clue_index === effectiveProgressStep;
+                        const isCurrentView = card.clue_index === stepId;
+                        const isFinal = card.is_final;
+                        const isAccessible =
+                          demoMode ||
+                          card.clue_index === effectiveProgressStep ||
+                          completed ||
+                          (allowReplay && card.clue_index < effectiveProgressStep);
+                        const isLocked = !demoMode && !isAccessible;
+                        const showUnlock =
+                          isCurrentProgress && !completed && !progressCooldownActive;
+                        return (
+                          <div key={card.id} className="flex items-center gap-3">
+                            <button
+                              onClick={() => {
+                                if (!isAccessible) return;
+                                const isReview =
+                                  card.clue_index < effectiveProgressStep && !demoMode && !allowReplay;
+                                const reviewSuffix = isReview ? "&review=1" : "";
+                                router.push(`/experience?step=${card.clue_index}${reviewSuffix}`);
+                              }}
+                              className={`flex min-w-[72px] flex-col items-center gap-2 ${
+                                isLocked ? "pointer-events-none opacity-50" : ""
+                              }`}
+                              aria-disabled={isLocked}
+                            >
+                              <div
+                                className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm ${
+                                  completed
+                                    ? "border-[var(--accent-emerald)] bg-[var(--accent-emerald)]/15 text-[var(--accent-emerald)]"
+                                    : showUnlock
+                                    ? "border-[var(--accent-gold)] bg-[var(--accent-gold)]/10 text-[var(--accent-gold)]"
+                                    : "border-[var(--stroke)] text-[var(--text-muted)]"
+                                }`}
+                              >
+                                {completed ? "✓" : showUnlock ? "🔓" : "🔒"}
+                              </div>
+                              <span className="flex min-h-[32px] flex-col items-center justify-start text-[10px] uppercase tracking-[0.3em]">
+                                <span
+                                  className={`${
+                                    isCurrentProgress || isCurrentView
+                                      ? "text-[var(--accent-gold)]"
+                                      : "text-[var(--text-muted)]"
+                                  }`}
+                                >
+                                  {isFinal ? "Final" : card.label}
+                                </span>
+                                <span className="text-[var(--text-muted)]">{isFinal ? "Clue" : ""}</span>
+                              </span>
+                            </button>
+                            {index < trackerClues.length - 1 && (
+                              <div
+                                className={`h-[2px] w-10 ${
+                                  card.clue_index < effectiveProgressStep
+                                    ? "bg-[var(--accent-emerald)]"
+                                    : "bg-[var(--stroke)]"
+                                }`}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {(demoUi || showDemoHelper) && (
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Tap any circle to jump between clues.
+                    </p>
+                  )}
+                </div>
+                {(demoUi || showDemoHelper) && (
+                  <>
+                    <p className="mt-4 text-xs text-[var(--text-muted)]">
+                      Need to restart? Use the account screen to reset progress.
+                    </p>
+                    <button
+                      onClick={() => router.push("/account")}
+                      className="mt-3 rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+                    >
+                      Go to account screen
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </section>
       </motion.div>
     </div>

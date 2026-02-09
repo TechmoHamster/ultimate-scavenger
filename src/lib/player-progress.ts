@@ -44,6 +44,7 @@ export const usePlayerProgress = (user: User | null) => {
       playerState?: { current_clue_index: number; wallet_balance: number };
       completions?: { clue_index: number; completed_at?: string | null }[];
       hints?: { clue_index: number; hint_order: number }[];
+      artifactClaims?: { clue_index: number }[];
     };
 
     const completed = (body.completions ?? []).map((row) => row.clue_index);
@@ -58,6 +59,7 @@ export const usePlayerProgress = (user: User | null) => {
       if (!purchased[row.clue_index]) purchased[row.clue_index] = [];
       purchased[row.clue_index].push(String(row.hint_order));
     });
+    const claimedArtifacts = (body.artifactClaims ?? []).map((row) => row.clue_index);
 
     setState({
       name: user.user_metadata?.full_name ?? "",
@@ -67,6 +69,7 @@ export const usePlayerProgress = (user: User | null) => {
       completedStepIds: completed,
       completedStepTimes: completionTimes,
       purchasedHints: purchased,
+      artifactClaims: claimedArtifacts,
       lastStepId: body.playerState?.current_clue_index ?? 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
