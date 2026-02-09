@@ -47,14 +47,14 @@ export const toDefaultClues = (): Clue[] =>
       cost: hint.cost,
       text: hint.text,
     })),
-    hints_enabled: true,
-    hint_limit: step.hints.length,
-    requires_unlock: true,
-    requires_password: true,
-    requires_gps: true,
-    requires_artifact: true,
-    cooldown_enabled: false,
-    cooldown_minutes: 0,
+    hints_enabled: step.hintsEnabled ?? true,
+    hint_limit: step.hintLimit ?? step.hints.length,
+    requires_unlock: step.requiresUnlock ?? true,
+    requires_password: step.requiresPassword ?? true,
+    requires_gps: step.requiresGps ?? true,
+    requires_artifact: step.requiresArtifact ?? true,
+    cooldown_enabled: step.cooldownEnabled ?? false,
+    cooldown_minutes: step.cooldownMinutes ?? 0,
   }));
 
 export const useClues = () => {
