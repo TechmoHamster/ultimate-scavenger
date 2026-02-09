@@ -92,10 +92,26 @@ export async function POST(request: Request) {
     .eq("clue_id", clueRow.id)
     .maybeSingle();
 
-  const lockEnabled = secret?.requires_unlock !== false;
-  const requiresArtifact = lockEnabled && (secret?.requires_artifact ?? true);
-  const requiresPassword = lockEnabled && (secret?.requires_password ?? true) && requirePassword;
-  const requiresGps = lockEnabled && (secret?.requires_gps ?? true) && requireGps;
+  const secretRow = secret as
+    | {
+        password?: string | null;
+        password_hash?: string | null;
+        password_ciphertext?: string | null;
+        radius_meters?: number | null;
+        lat?: number | null;
+        lng?: number | null;
+        requires_unlock?: boolean | null;
+        requires_artifact?: boolean | null;
+        requires_password?: boolean | null;
+        requires_gps?: boolean | null;
+      }
+    | null;
+
+  const lockEnabled = secretRow?.requires_unlock !== false;
+  const requiresArtifact = lockEnabled && (secretRow?.requires_artifact ?? true);
+  const requiresPassword =
+    lockEnabled && (secretRow?.requires_password ?? true) && requirePassword;
+  const requiresGps = lockEnabled && (secretRow?.requires_gps ?? true) && requireGps;
 
   const cooldownEnabled = Boolean(clueRow?.cooldown_enabled);
   const cooldownMinutes = Math.max(0, clueRow?.cooldown_minutes ?? 0);
@@ -141,7 +157,11 @@ export async function POST(request: Request) {
   }
 
   if (requiresPassword) {
-    if (!secret?.password_hash && !secret?.password && !secret?.password_ciphertext) {
+    if (
+      !secretRow?.password_hash &&
+      !secretRow?.password &&
+      !secretRow?.password_ciphertext
+    ) {
       return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
     }
 
@@ -150,9 +170,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, reason: "Missing password" }, { status: 200 });
     }
 
-    if (secret?.password_ciphertext) {
+    if (secretRow?.password_ciphertext) {
       try {
-        const stored = normalizePassword(decryptSecret(secret.password_ciphertext));
+        const stored = normalizePassword(decryptSecret(secretRow.password_ciphertext));
         const input = normalizePassword(inputPassword);
         if (!input || !stored.includes(input)) {
           return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
@@ -160,13 +180,13 @@ export async function POST(request: Request) {
       } catch {
         return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
       }
-    } else if (secret?.password_hash) {
-      if (!verifyPassword(inputPassword, secret.password_hash)) {
+    } else if (secretRow?.password_hash) {
+      if (!verifyPassword(inputPassword, secretRow.password_hash)) {
         return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
       }
-    } else if (secret?.password) {
+    } else if (secretRow?.password) {
       const normalized = normalizePassword(inputPassword);
-      if (!normalized || !normalizePassword(secret.password).includes(normalized)) {
+      if (!normalized || !normalizePassword(secretRow.password).includes(normalized)) {
         return NextResponse.json({ ok: false, reason: "Invalid password" }, { status: 200 });
       }
       const upgraded = hashPassword(inputPassword);
@@ -178,7 +198,12 @@ export async function POST(request: Request) {
   }
 
   if (requiresGps) {
-    if (!secret || !secret.radius_meters || !secret.lat || !secret.lng) {
+    if (
+      !secretRow ||
+      !secretRow.radius_meters ||
+      !secretRow.lat ||
+      !secretRow.lng
+    ) {
       return NextResponse.json({ ok: false, reason: "Clue not configured" }, { status: 400 });
     }
     if (!body.coords) {
@@ -187,8 +212,8 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ ok: false, reason: "Missing GPS" }, { status: 200 });
     }
-    const distance = haversine(body.coords.lat, body.coords.lng, secret.lat, secret.lng);
-    if (distance > secret.radius_meters) {
+    const distance = haversine(body.coords.lat, body.coords.lng, secretRow.lat, secretRow.lng);
+    if (distance > secretRow.radius_meters) {
       return NextResponse.json({ ok: false, reason: "Out of range", distance }, { status: 200 });
     }
     return NextResponse.json({ ok: true, distance });
