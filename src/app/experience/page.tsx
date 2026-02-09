@@ -234,9 +234,8 @@ function ExperienceContent() {
     if (Number.isNaN(base)) return null;
     return base + cooldownMinutes * 60 * 1000;
   }, [cooldownEnabled, cooldownMinutes, previousCompletionAt]);
-  const progressCooldownActive = cooldownRemainingMs > 0;
-  const cooldownActive = progressCooldownActive && stepId === effectiveProgressStep;
-  const cooldownLockActive = cooldownActive && !isStaffBypass;
+  const cooldownActive = Boolean(cooldownEndsAt && cooldownEndsAt > Date.now());
+  const cooldownLockActive = cooldownActive && stepId === effectiveProgressStep && !isStaffBypass;
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
   const requiresUnlock = step
