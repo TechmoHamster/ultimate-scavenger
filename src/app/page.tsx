@@ -253,7 +253,7 @@ export default function Home() {
                 {isProfileLoading
                   ? "Syncing your progress..."
                   : cooldownActive
-                  ? `Your next clue unlocks in ${formatCooldown(cooldownRemainingMs)}.`
+                  ? "Cooldown active. We’ll notify you when it’s ready."
                   : "Your next clue is ready whenever you are."}
               </p>
               {cooldownActive && (
