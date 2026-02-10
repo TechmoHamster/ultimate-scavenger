@@ -72,7 +72,7 @@ export const usePlayerProgress = (user: User | null) => {
       artifactClaims: claimedArtifacts,
       lastStepId: body.playerState?.current_clue_index ?? 0,
       createdAt: new Date().toISOString(),
-      updatedAt: playerState?.updated_at ?? new Date().toISOString(),
+      updatedAt: body.playerState?.updated_at ?? new Date().toISOString(),
     });
 
     setLoading(false);
