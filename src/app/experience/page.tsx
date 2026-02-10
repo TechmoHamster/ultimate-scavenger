@@ -976,7 +976,7 @@ function ExperienceContent() {
                           (allowReplay && card.clue_index < effectiveProgressStep);
                         const isLocked = !demoMode && !isAccessible;
                         const showUnlock =
-                          isCurrentProgress && !completed && !progressCooldownActive;
+                          isCurrentProgress && !completed && !cooldownActive && !isStaffBypass;
                         return (
                           <div key={card.id} className="flex items-center gap-3">
                             <button
