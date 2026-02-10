@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 
   let { data: playerState } = await supabase
     .from("player_state")
-    .select("current_clue_index, wallet_balance")
+    .select("current_clue_index, wallet_balance, updated_at")
     .eq("player_id", userId)
     .maybeSingle();
 
@@ -42,7 +42,11 @@ export async function GET(request: Request) {
       current_clue_index: 0,
       wallet_balance: startingWallet,
     });
-    playerState = { current_clue_index: 0, wallet_balance: startingWallet };
+    playerState = {
+      current_clue_index: 0,
+      wallet_balance: startingWallet,
+      updated_at: new Date().toISOString(),
+    };
   }
 
   const { data: completions } = await supabase

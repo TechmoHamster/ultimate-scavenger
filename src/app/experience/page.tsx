@@ -225,8 +225,11 @@ function ExperienceContent() {
   const artifactGateLocked = artifactRequired && !artifactClaimed;
   const cooldownEnabled = Boolean(progressClue?.cooldown_enabled);
   const cooldownMinutes = Math.max(0, progressClue?.cooldown_minutes ?? 0);
+  const progressUpdatedAt = progress.state?.updatedAt ?? state?.updatedAt ?? null;
   const previousCompletionAt =
-    effectiveProgressStep > 0 ? completionTimes[effectiveProgressStep - 1] : null;
+    effectiveProgressStep > 0
+      ? completionTimes[effectiveProgressStep - 1] ?? progressUpdatedAt
+      : null;
   const cooldownEndsAt = useMemo(() => {
     if (!cooldownEnabled || cooldownMinutes <= 0) return null;
     if (!previousCompletionAt) return null;

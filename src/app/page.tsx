@@ -82,8 +82,11 @@ export default function Home() {
     trackerClues.find((clue) => clue.clue_index === currentStepId) ?? trackerClues[0];
   const cooldownEnabled = Boolean(currentStep?.cooldown_enabled);
   const cooldownMinutes = Math.max(0, currentStep?.cooldown_minutes ?? 0);
+  const progressUpdatedAt = progress.state?.updatedAt ?? state?.updatedAt ?? null;
   const previousCompletionAt =
-    currentStepId > 0 ? completionTimes[currentStepId - 1] : null;
+    currentStepId > 0
+      ? completionTimes[currentStepId - 1] ?? progressUpdatedAt
+      : null;
   const cooldownEndsAt = useMemo(() => {
     if (!cooldownEnabled || cooldownMinutes <= 0) return null;
     if (!previousCompletionAt) return null;
@@ -253,6 +256,11 @@ export default function Home() {
                   ? `Your next clue unlocks in ${formatCooldown(cooldownRemainingMs)}.`
                   : "Your next clue is ready whenever you are."}
               </p>
+              {cooldownActive && (
+                <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-3 text-sm text-[var(--accent-gold)]">
+                  Next clue unlocks in {formatCooldown(cooldownRemainingMs)}.
+                </div>
+              )}
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => router.push("/experience/current")}
@@ -327,19 +335,6 @@ export default function Home() {
                     {hintsUsed}
                   </p>
                 </div>
-                {cooldownActive && (
-                  <div className="rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-4 md:col-span-2">
-                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]">
-                      Cooldown active
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-white">
-                      Next clue unlocks in {formatCooldown(cooldownRemainingMs)}.
-                    </p>
-                    <p className="mt-2 text-xs text-[var(--text-muted)]">
-                      We&apos;ll email you when it&apos;s ready.
-                    </p>
-                  </div>
-                )}
                 <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 md:col-span-2">
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
                     Next reward

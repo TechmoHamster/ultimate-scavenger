@@ -41,7 +41,7 @@ export const usePlayerProgress = (user: User | null) => {
     }
 
     const body = (await response.json()) as {
-      playerState?: { current_clue_index: number; wallet_balance: number };
+      playerState?: { current_clue_index: number; wallet_balance: number; updated_at?: string | null };
       completions?: { clue_index: number; completed_at?: string | null }[];
       hints?: { clue_index: number; hint_order: number }[];
       artifactClaims?: { clue_index: number }[];
@@ -72,7 +72,7 @@ export const usePlayerProgress = (user: User | null) => {
       artifactClaims: claimedArtifacts,
       lastStepId: body.playerState?.current_clue_index ?? 0,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      updatedAt: playerState?.updated_at ?? new Date().toISOString(),
     });
 
     setLoading(false);
