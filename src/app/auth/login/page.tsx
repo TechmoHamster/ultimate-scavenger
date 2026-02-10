@@ -61,7 +61,7 @@ function LoginContent() {
     }
     const supabase = createSupabaseBrowserClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/account`,
+      redirectTo: `${window.location.origin}/auth/reset`,
     });
     setStatus(error ? error.message : "Password reset link sent.");
   };

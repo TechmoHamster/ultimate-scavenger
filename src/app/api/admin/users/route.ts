@@ -145,14 +145,51 @@ export async function POST(request: Request) {
     if (!body.email) {
       return NextResponse.json({ ok: false, reason: "Missing email" }, { status: 400 });
     }
+    if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) {
+      return NextResponse.json({ ok: false, reason: "Email not configured" }, { status: 500 });
+    }
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : "");
     const { data, error: linkError } = await supabase.auth.admin.generateLink({
       type: "recovery",
       email: body.email,
+      options: baseUrl ? { redirectTo: `${baseUrl}/auth/reset` } : undefined,
     });
     if (linkError) {
       return NextResponse.json({ ok: false, reason: linkError.message }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, link: data?.properties?.action_link ?? null });
+    const actionLink = data?.properties?.action_link ?? null;
+    if (!actionLink) {
+      return NextResponse.json({ ok: false, reason: "Unable to generate reset link." }, { status: 400 });
+    }
+    const emailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM,
+        to: [body.email],
+        subject: "Reset your scavenger hunt password",
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+            <h2>Reset your password</h2>
+            <p>Click the button below to choose a new password.</p>
+            <p><a href="${actionLink}" style="display:inline-block;padding:10px 16px;background:#f6f099;color:#000;border-radius:999px;text-decoration:none;">Reset password</a></p>
+            <p>If you did not request this, you can ignore this email.</p>
+          </div>
+        `,
+      }),
+    });
+    if (!emailResponse.ok) {
+      const details = await emailResponse.text();
+      return NextResponse.json({ ok: false, reason: details }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
   }
 
   if (body.action === "delete_user") {

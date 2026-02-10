@@ -571,16 +571,7 @@ export default function AdminDashboard() {
       setUserStatus(body?.reason ?? "Unable to generate reset link.");
       return;
     }
-    if (body?.link) {
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(body.link);
-        pushUserStatus("Password reset link copied to clipboard.");
-      } else {
-        pushUserStatus("Password reset link generated.");
-      }
-    } else {
-      pushUserStatus("Password reset link generated.");
-    }
+    pushUserStatus("Password reset email sent.");
   };
 
   const deleteUser = async (userId: string) => {

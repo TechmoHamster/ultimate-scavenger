@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import { DEMO_COORDS, DEMO_GEO_OVERRIDE } from "@/lib/config";
@@ -53,6 +53,9 @@ function ExperienceContent() {
     "idle" | "pending" | "claimed" | "error"
   >("idle");
   const [artifactNote, setArtifactNote] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const { clues } = useClues();
   const progress = usePlayerProgress(user);
@@ -284,6 +287,12 @@ function ExperienceContent() {
   }, [stepId]);
 
   useEffect(() => {
+    if (artifactGateLocked) {
+      setShowUnlock(false);
+    }
+  }, [artifactGateLocked]);
+
+  useEffect(() => {
     if (!user || !step) return;
     const tokenParam = searchParams.get("token");
     if (!tokenParam) return;
@@ -341,6 +350,7 @@ function ExperienceContent() {
       setArtifactNote(
         body?.skipped ? "QR validation skipped for this clue." : "Envelope verified. You can unlock this clue now."
       );
+      setShowUnlock(true);
       progress.refresh();
       const params = new URLSearchParams(searchParams.toString());
       params.delete("token");
@@ -361,6 +371,78 @@ function ExperienceContent() {
     router,
     progress,
   ]);
+
+  useEffect(() => {
+    if (!scanOpen) return;
+    let stream: MediaStream | null = null;
+    let rafId: number | null = null;
+    let active = true;
+
+    const stopStream = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+      }
+    };
+
+    const startScan = async () => {
+      setScanError(null);
+      const BarcodeDetectorCtor = (window as typeof window & {
+        BarcodeDetector?: new (options: { formats: string[] }) => {
+          detect: (video: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
+        };
+      }).BarcodeDetector;
+      if (!BarcodeDetectorCtor) {
+        setScanError("Your browser doesn’t support in-app QR scanning. Use your camera app instead.");
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+        if (!videoRef.current) {
+          setScanError("Camera not available.");
+          stopStream();
+          return;
+        }
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+        const scan = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            if (codes.length > 0) {
+              const value = codes[0].rawValue;
+              stopStream();
+              setScanOpen(false);
+              if (value.startsWith("http")) {
+                router.push(value);
+              } else {
+                setScanError("Invalid QR code. Please try again.");
+              }
+              return;
+            }
+          } catch {
+            // ignore scan errors
+          }
+          rafId = requestAnimationFrame(scan);
+        };
+        scan();
+      } catch {
+        setScanError("Unable to access camera. Check permissions and try again.");
+        stopStream();
+      }
+    };
+
+    startScan();
+    return () => {
+      active = false;
+      stopStream();
+    };
+  }, [scanOpen, router]);
 
   useEffect(() => {
     if (!cooldownEndsAt) {
@@ -615,6 +697,41 @@ function ExperienceContent() {
 
   return (
     <div className="page-shell min-h-screen px-6 py-10 md:px-12 md:py-14">
+      {scanOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
+          <div className="w-full max-w-md rounded-3xl border border-[var(--stroke)] bg-[var(--panel)] p-6 text-center">
+            <p className="text-xs uppercase tracking-[0.4em] text-[var(--accent-emerald)]">
+              QR Scanner
+            </p>
+            <h2 className="text-display mt-2 text-2xl">Scan the envelope QR</h2>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">
+              Align the QR code inside the frame to verify this clue.
+            </p>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--stroke)] bg-black/40">
+              <video ref={videoRef} className="h-64 w-full object-cover" playsInline muted />
+            </div>
+            {scanError && (
+              <p className="mt-3 text-xs text-[var(--accent-gold)]">{scanError}</p>
+            )}
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => {
+                  setScanError(null);
+                  setScanOpen(false);
+                }}
+                className="rounded-full border border-[var(--stroke)] px-5 py-2 text-xs uppercase tracking-[0.3em] text-white"
+              >
+                Close scanner
+              </button>
+              {!scanError && (
+                <span className="text-xs text-[var(--text-muted)]">
+                  Camera access is required to scan.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <motion.div
         className="mx-auto flex w-full max-w-6xl flex-col gap-8"
         initial={{ opacity: 0, y: 24 }}
@@ -711,9 +828,28 @@ function ExperienceContent() {
                   </p>
                 )}
                 {artifactGateLocked && (
-                  <p className="mt-4 text-center text-sm text-[var(--accent-gold)]">
-                    Scan the envelope QR to unlock this clue.
-                  </p>
+                  <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-4 text-center">
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                      QR required
+                    </p>
+                    <p className="mt-2 text-sm text-white">
+                      Scan the envelope QR to unlock this clue.
+                    </p>
+                    <div className="mt-4 flex flex-wrap justify-center gap-3">
+                      <button
+                        onClick={() => setScanOpen(true)}
+                        className="rounded-full bg-[var(--accent-gold)] px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                      >
+                        Scan QR code
+                      </button>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        Use your camera app if needed.
+                      </span>
+                    </div>
+                    {scanError && (
+                      <p className="mt-3 text-xs text-[var(--accent-gold)]">{scanError}</p>
+                    )}
+                  </div>
                 )}
                 {stepId === 0 && (
                   <p className="mt-4 text-center text-sm text-[var(--text-muted)]">
@@ -777,69 +913,91 @@ function ExperienceContent() {
                     </div>
                     {showUnlock && (
                       <div>
-                        {artifactGateLocked && (
-                          <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-3 text-sm text-[var(--accent-gold)]">
-                            Scan the envelope QR to unlock this clue.
-                          </div>
-                        )}
-                        <div className="mt-5 grid gap-4">
-                          {effectivePassword && (
-                            <label className="grid gap-2 text-sm">
-                              <span className="text-[var(--text-muted)]">Password</span>
-                              <input
-                                value={password}
-                                onChange={(event) => setPassword(event.target.value)}
-                                disabled={cooldownLockActive || artifactGateLocked}
-                                className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
-                                placeholder="Enter the location name"
-                              />
-                            </label>
-                          )}
-                          {effectiveGps && (
-                            <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 min-w-0 self-start">
-                              <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                                GPS Verification
-                              </p>
-                              <p className="mt-2 text-sm text-white">
-                                {formatDistance(distance, geoStatus === "ready")}
-                              </p>
-                              {(demoUi || showDemoHelper) && (
-                                <p className="mt-1 text-xs text-[var(--accent-emerald)]">
-                                  {DEMO_GEO_OVERRIDE
-                                    ? "Demo mode uses test coordinates for geo verification."
-                                    : "Demo mode skips geo verification."}
-                                </p>
-                              )}
-                              <div className="mt-4 flex flex-wrap gap-3">
-                                <button
-                                  onClick={handleLocationCheck}
-                                  disabled={cooldownLockActive || artifactGateLocked}
-                                  className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
-                                >
-                                  {geoStatus === "pending" ? "Checking..." : "Check location"}
-                                </button>
-                                {geoStatus === "ready" && (
-                                  <span
-                                    className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.2em] ${
-                                      distance !== null
-                                        ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
-                                        : "bg-[var(--stroke)]/20 text-[var(--text-muted)]"
-                                    }`}
-                                  >
-                                    {distance !== null ? "Checked" : "Ready"}
-                                  </span>
-                                )}
-                              </div>
+                        {artifactGateLocked ? (
+                          <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-4 text-center">
+                            <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]">
+                              QR verification required
+                            </p>
+                            <p className="mt-2 text-sm text-white">
+                              Scan the envelope QR to enable the password and GPS checks.
+                            </p>
+                            <div className="mt-4 flex flex-wrap justify-center gap-3">
+                              <button
+                                onClick={() => setScanOpen(true)}
+                                className="rounded-full bg-[var(--accent-gold)] px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                              >
+                                Scan QR code
+                              </button>
+                              <span className="text-xs text-[var(--text-muted)]">
+                                Use your camera app if needed.
+                              </span>
                             </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={handleCompleteStep}
-                          disabled={cooldownLockActive || artifactGateLocked}
-                          className="mt-4 w-full rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
-                        >
-                          Unlock clue
-                        </button>
+                            {scanError && (
+                              <p className="mt-3 text-xs text-[var(--accent-gold)]">{scanError}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mt-5 grid gap-4">
+                              {effectivePassword && (
+                                <label className="grid gap-2 text-sm">
+                                  <span className="text-[var(--text-muted)]">Password</span>
+                                  <input
+                                    value={password}
+                                    onChange={(event) => setPassword(event.target.value)}
+                                    disabled={cooldownLockActive}
+                                    className="w-full rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                                    placeholder="Enter the location name"
+                                  />
+                                </label>
+                              )}
+                              {effectiveGps && (
+                                <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-4 min-w-0 self-start">
+                                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                                    GPS Verification
+                                  </p>
+                                  <p className="mt-2 text-sm text-white">
+                                    {formatDistance(distance, geoStatus === "ready")}
+                                  </p>
+                                  {(demoUi || showDemoHelper) && (
+                                    <p className="mt-1 text-xs text-[var(--accent-emerald)]">
+                                      {DEMO_GEO_OVERRIDE
+                                        ? "Demo mode uses test coordinates for geo verification."
+                                        : "Demo mode skips geo verification."}
+                                    </p>
+                                  )}
+                                  <div className="mt-4 flex flex-wrap gap-3">
+                                    <button
+                                      onClick={handleLocationCheck}
+                                      disabled={cooldownLockActive}
+                                      className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs uppercase tracking-[0.3em] text-[var(--accent-emerald)]"
+                                    >
+                                      {geoStatus === "pending" ? "Checking..." : "Check location"}
+                                    </button>
+                                    {geoStatus === "ready" && (
+                                      <span
+                                        className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.2em] ${
+                                          distance !== null
+                                            ? "bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]"
+                                            : "bg-[var(--stroke)]/20 text-[var(--text-muted)]"
+                                        }`}
+                                      >
+                                        {distance !== null ? "Checked" : "Ready"}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={handleCompleteStep}
+                              disabled={cooldownLockActive}
+                              className="mt-4 w-full rounded-full bg-[var(--accent-gold)] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-black"
+                            >
+                              Unlock clue
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
