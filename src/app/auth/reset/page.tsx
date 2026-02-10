@@ -1,11 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
@@ -122,5 +122,25 @@ export default function ResetPasswordPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="page-shell min-h-screen px-6 py-10 md:px-12 md:py-16">
+          <div className="glass-panel rounded-3xl p-6 md:p-8">
+            <div className="animate-pulse space-y-3">
+              <div className="h-4 w-32 rounded-full bg-white/10" />
+              <div className="h-8 w-1/2 rounded-2xl bg-white/10" />
+              <div className="h-4 w-2/3 rounded-full bg-white/10" />
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
