@@ -376,11 +376,16 @@ function ExperienceContent() {
     if (!scanOpen) return;
     let stream: MediaStream | null = null;
     let rafId: number | null = null;
+    let zxingControls: { stop: () => void } | null = null;
     let active = true;
 
     const stopStream = () => {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = null;
+      if (zxingControls) {
+        zxingControls.stop();
+        zxingControls = null;
+      }
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
         stream = null;
@@ -394,45 +399,73 @@ function ExperienceContent() {
           detect: (video: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
         };
       }).BarcodeDetector;
-      if (!BarcodeDetectorCtor) {
-        setScanError("Your browser doesn’t support in-app QR scanning. Use your camera app instead.");
-        return;
+      if (BarcodeDetectorCtor) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" },
+          });
+          if (!videoRef.current) {
+            setScanError("Camera not available.");
+            stopStream();
+            return;
+          }
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+          const scan = async () => {
+            if (!active || !videoRef.current) return;
+            try {
+              const codes = await detector.detect(videoRef.current);
+              if (codes.length > 0) {
+                const value = codes[0].rawValue;
+                stopStream();
+                setScanOpen(false);
+                if (value.startsWith("http")) {
+                  router.push(value);
+                } else {
+                  setScanError("Invalid QR code. Please try again.");
+                }
+                return;
+              }
+            } catch {
+              // ignore scan errors
+            }
+            rafId = requestAnimationFrame(scan);
+          };
+          scan();
+          return;
+        } catch {
+          setScanError("Unable to access camera. Check permissions and try again.");
+          stopStream();
+          return;
+        }
       }
+
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
+        const { BrowserQRCodeReader } = await import("@zxing/browser");
         if (!videoRef.current) {
           setScanError("Camera not available.");
           stopStream();
           return;
         }
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
-        const scan = async () => {
-          if (!active || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            if (codes.length > 0) {
-              const value = codes[0].rawValue;
-              stopStream();
-              setScanOpen(false);
-              if (value.startsWith("http")) {
-                router.push(value);
-              } else {
-                setScanError("Invalid QR code. Please try again.");
-              }
-              return;
+        const reader = new BrowserQRCodeReader();
+        zxingControls = await reader.decodeFromVideoDevice(
+          undefined,
+          videoRef.current,
+          (result) => {
+            if (!result) return;
+            const value = result.getText();
+            stopStream();
+            setScanOpen(false);
+            if (value.startsWith("http")) {
+              router.push(value);
+            } else {
+              setScanError("Invalid QR code. Please try again.");
             }
-          } catch {
-            // ignore scan errors
           }
-          rafId = requestAnimationFrame(scan);
-        };
-        scan();
+        );
       } catch {
-        setScanError("Unable to access camera. Check permissions and try again.");
+        setScanError("Your browser doesn’t support in-app QR scanning. Use your camera app instead.");
         stopStream();
       }
     };
@@ -827,13 +860,13 @@ function ExperienceContent() {
                     {step.reminder}
                   </p>
                 )}
-                {artifactGateLocked && (
+                {artifactGateLocked && !showUnlock && (
                   <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-4 text-center">
                     <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]">
                       QR required
                     </p>
                     <p className="mt-2 text-sm text-white">
-                      Scan the envelope QR to unlock this clue.
+                      Scan the envelope QR to unlock the next clue.
                     </p>
                     <div className="mt-4 flex flex-wrap justify-center gap-3">
                       <button
@@ -916,10 +949,10 @@ function ExperienceContent() {
                         {artifactGateLocked ? (
                           <div className="mt-4 rounded-2xl border border-[var(--accent-gold)]/40 bg-[var(--accent-gold)]/10 px-4 py-4 text-center">
                             <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-gold)]">
-                              QR verification required
+                              QR required
                             </p>
                             <p className="mt-2 text-sm text-white">
-                              Scan the envelope QR to enable the password and GPS checks.
+                              Scan the envelope QR to enable unlock.
                             </p>
                             <div className="mt-4 flex flex-wrap justify-center gap-3">
                               <button

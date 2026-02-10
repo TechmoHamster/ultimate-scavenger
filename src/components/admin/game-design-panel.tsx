@@ -1264,43 +1264,6 @@ export default function GameDesignPanel({
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-[var(--stroke)] bg-black/30 p-3">
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                      Global overrides
-                    </p>
-                    <p className="mt-2 text-xs text-[var(--text-muted)]">
-                      These apply across the entire hunt.
-                    </p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {[
-                        { key: "requirePassword", label: "Require password (global)" },
-                        { key: "requireGps", label: "Require GPS (global)" },
-                      ].map((item) => (
-                        <label
-                          key={item.key}
-                          className="flex items-center justify-between rounded-2xl border border-[var(--stroke)] bg-black/30 px-4 py-3 text-sm text-[var(--text-muted)]"
-                        >
-                          <span>{item.label}</span>
-                          <span className="relative inline-flex h-6 w-11 items-center">
-                            <input
-                              type="checkbox"
-                              checked={controlDraft[item.key as keyof typeof controlDefaults] as boolean}
-                              onChange={(event) =>
-                                updateControl(
-                                  item.key as keyof typeof controlDefaults,
-                                  event.target.checked
-                                )
-                              }
-                              className="peer h-0 w-0 opacity-0"
-                            />
-                            <span className="absolute inset-0 rounded-full border border-[var(--stroke)] bg-black/40 transition peer-checked:bg-[var(--accent-emerald)]/40 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent-gold)]" />
-                            <span className="absolute left-1 h-4 w-4 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent-gold)]" />
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
                   <label className="grid content-start gap-2 text-sm">
                     <span className="text-[var(--text-muted)]">Cooldown (minutes)</span>
                     <input
