@@ -72,8 +72,13 @@ export async function POST(request: Request) {
       .eq("player_id", userData.user.id)
       .maybeSingle();
     const currentIndex = playerState?.current_clue_index ?? 0;
-    if (clueIndex > currentIndex) {
-      return NextResponse.json({ ok: false, reason: "Clue locked" }, { status: 403 });
+    const expectedIndex = currentIndex + 1;
+    if (clueIndex !== expectedIndex) {
+      const reason =
+        clueIndex <= currentIndex
+          ? "This QR code is no longer valid. Please scan the next clue to continue."
+          : "This QR code is for a future clue. Please scan the next clue to continue.";
+      return NextResponse.json({ ok: false, reason }, { status: 403 });
     }
   }
 
