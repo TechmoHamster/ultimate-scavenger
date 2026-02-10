@@ -218,6 +218,7 @@ function ExperienceContent() {
   const effectiveGps = perClueGpsEnabled && requireGps;
   const artifactRequired = lockEnabled && (step?.requires_artifact ?? true);
   const isStaffBypass = demoMode || (isAdmin && !playerView);
+  const cooldownBypass = demoMode;
   const artifactClaimed =
     !artifactRequired ||
     isStaffBypass ||
@@ -238,7 +239,7 @@ function ExperienceContent() {
     return base + cooldownMinutes * 60 * 1000;
   }, [cooldownEnabled, cooldownMinutes, previousCompletionAt]);
   const cooldownActive = Boolean(cooldownEndsAt && cooldownEndsAt > Date.now());
-  const cooldownLockActive = cooldownActive && stepId === effectiveProgressStep && !isStaffBypass;
+  const cooldownLockActive = cooldownActive && stepId === effectiveProgressStep && !cooldownBypass;
   const purchasedHints = state?.purchasedHints?.[stepId] ?? [];
   const nextStepId = Math.min(stepId + 1, Math.max(trackerClues.length - 1, 0));
   const requiresUnlock = step
@@ -979,7 +980,7 @@ function ExperienceContent() {
                           (allowReplay && card.clue_index < effectiveProgressStep);
                         const isLocked = !demoMode && !isAccessible;
                         const showUnlock =
-                          isCurrentProgress && !completed && !cooldownActive && !isStaffBypass;
+                          isCurrentProgress && !completed && !cooldownActive;
                         return (
                           <div key={card.id} className="flex items-center gap-3">
                             <button
